@@ -1,0 +1,522 @@
+import Foundation
+import Combine
+import AppKit
+import AVFoundation
+import CoreAudio
+import ServiceManagement
+import ApplicationServices
+import os.log
+
+private let recordingLog = OSLog(subsystem: "com.speaklow.app", category: "Recording")
+
+// File-based logger for debugging (unified log not visible for unsigned apps)
+func viLog(_ message: String) {
+    let timestamp = ISO8601DateFormatter().string(from: Date())
+    let line = "[\(timestamp)] \(message)\n"
+    let logPath = NSHomeDirectory() + "/Library/Logs/SpeakLow.log"
+    if let handle = FileHandle(forWritingAtPath: logPath) {
+        handle.seekToEndOfFile()
+        handle.write(Data(line.utf8))
+        handle.closeFile()
+    } else {
+        FileManager.default.createFile(atPath: logPath, contents: Data(line.utf8))
+    }
+    NSLog("[SpeakLow] %@", message)
+}
+
+final class AppState: ObservableObject, @unchecked Sendable {
+    private let selectedMicrophoneStorageKey = "selected_microphone_id"
+    private let transcribingIndicatorDelay: TimeInterval = 1.0
+
+    @Published var hasCompletedSetup: Bool {
+        didSet {
+            UserDefaults.standard.set(hasCompletedSetup, forKey: "hasCompletedSetup")
+        }
+    }
+
+    @Published var selectedHotkey: HotkeyOption {
+        didSet {
+            UserDefaults.standard.set(selectedHotkey.rawValue, forKey: "hotkey_option")
+            restartHotkeyMonitoring()
+        }
+    }
+
+    @Published var isRecording = false
+    @Published var isTranscribing = false
+    @Published var lastTranscript: String = ""
+    @Published var errorMessage: String?
+    @Published var statusText: String = "Ready"
+    @Published var hasAccessibility = false
+    @Published var launchAtLogin: Bool {
+        didSet { setLaunchAtLogin(launchAtLogin) }
+    }
+
+    @Published var selectedMicrophoneID: String {
+        didSet {
+            UserDefaults.standard.set(selectedMicrophoneID, forKey: selectedMicrophoneStorageKey)
+        }
+    }
+    @Published var availableMicrophones: [AudioDevice] = []
+
+    let audioRecorder = AudioRecorder()
+    let hotkeyManager = HotkeyManager()
+    let overlayManager = RecordingOverlayManager()
+    private var accessibilityTimer: Timer?
+    private var audioLevelCancellable: AnyCancellable?
+    private var transcribingIndicatorTask: Task<Void, Never>?
+    private var audioDeviceListenerBlock: AudioObjectPropertyListenerBlock?
+
+    init() {
+        let hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
+        let selectedHotkey = HotkeyOption(rawValue: UserDefaults.standard.string(forKey: "hotkey_option") ?? "rightOption") ?? .rightOption
+        let initialAccessibility = AXIsProcessTrusted()
+        let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
+
+        self.hasCompletedSetup = hasCompletedSetup
+        self.selectedHotkey = selectedHotkey
+        self.hasAccessibility = initialAccessibility
+        self.launchAtLogin = SMAppService.mainApp.status == .enabled
+        self.selectedMicrophoneID = selectedMicrophoneID
+
+        refreshAvailableMicrophones()
+        installAudioDeviceListener()
+
+        viLog("AppState init complete. hotkey=\(selectedHotkey.rawValue), setup=\(hasCompletedSetup), accessibility=\(initialAccessibility)")
+    }
+
+    deinit {
+        removeAudioDeviceListener()
+    }
+
+    private func removeAudioDeviceListener() {
+        guard let block = audioDeviceListenerBlock else { return }
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            DispatchQueue.main,
+            block
+        )
+        audioDeviceListenerBlock = nil
+    }
+
+    // MARK: - Audio Storage
+
+    static func audioStorageDirectory() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "VoiceInput"
+        let audioDir = appSupport.appendingPathComponent("\(appName)/audio", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: audioDir.path) {
+            try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
+        }
+        return audioDir
+    }
+
+    // MARK: - Accessibility
+
+    func startAccessibilityPolling() {
+        accessibilityTimer?.invalidate()
+        hasAccessibility = AXIsProcessTrusted()
+        accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.hasAccessibility = AXIsProcessTrusted()
+            }
+        }
+    }
+
+    func stopAccessibilityPolling() {
+        accessibilityTimer?.invalidate()
+        accessibilityTimer = nil
+    }
+
+    func openAccessibilitySettings() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
+    }
+
+    // MARK: - Launch at Login
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            let current = SMAppService.mainApp.status == .enabled
+            if current != launchAtLogin {
+                launchAtLogin = current
+            }
+        }
+    }
+
+    func refreshLaunchAtLoginStatus() {
+        let current = SMAppService.mainApp.status == .enabled
+        if current != launchAtLogin {
+            launchAtLogin = current
+        }
+    }
+
+    // MARK: - Microphones
+
+    func refreshAvailableMicrophones() {
+        availableMicrophones = AudioDevice.availableInputDevices()
+    }
+
+    private func installAudioDeviceListener() {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.refreshAvailableMicrophones()
+            }
+        }
+        audioDeviceListenerBlock = block
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            DispatchQueue.main,
+            block
+        )
+    }
+
+    // MARK: - Hotkey Monitoring
+
+    func startHotkeyMonitoring() {
+        hotkeyManager.onKeyDown = { [weak self] in
+            DispatchQueue.main.async {
+                self?.handleHotkeyDown()
+            }
+        }
+        hotkeyManager.onKeyUp = { [weak self] in
+            DispatchQueue.main.async {
+                self?.handleHotkeyUp()
+            }
+        }
+        hotkeyManager.start(option: selectedHotkey)
+    }
+
+    private func restartHotkeyMonitoring() {
+        hotkeyManager.start(option: selectedHotkey)
+    }
+
+    private func handleHotkeyDown() {
+        viLog("handleHotkeyDown() fired, isRecording=\(isRecording), isTranscribing=\(isTranscribing)")
+        guard !isRecording && !isTranscribing else { return }
+        startRecording()
+    }
+
+    private func handleHotkeyUp() {
+        viLog("handleHotkeyUp() fired, isRecording=\(isRecording)")
+        guard isRecording else { return }
+        stopAndTranscribe()
+    }
+
+    func toggleRecording() {
+        os_log(.info, log: recordingLog, "toggleRecording() called, isRecording=%{public}d", isRecording)
+        if isRecording {
+            stopAndTranscribe()
+        } else {
+            startRecording()
+        }
+    }
+
+    // MARK: - Recording
+
+    private func startRecording() {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        viLog("startRecording() entered")
+        // Always re-check live instead of relying on cached value
+        hasAccessibility = AXIsProcessTrusted()
+        viLog("AXIsProcessTrusted() = \(hasAccessibility)")
+        guard hasAccessibility else {
+            errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
+            statusText = "No Accessibility"
+            showAccessibilityAlert()
+            return
+        }
+        guard ensureMicrophoneAccess() else { return }
+        beginRecording()
+        os_log(.info, log: recordingLog, "startRecording() finished: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+    }
+
+    private func ensureMicrophoneAccess() -> Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        switch status {
+        case .authorized:
+            return true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self?.beginRecording()
+                    } else {
+                        self?.errorMessage = "Microphone permission denied. Grant access in System Settings > Privacy & Security > Microphone."
+                        self?.statusText = "No Microphone"
+                        self?.showMicrophonePermissionAlert()
+                    }
+                }
+            }
+            return false
+        default:
+            errorMessage = "Microphone permission denied. Grant access in System Settings > Privacy & Security > Microphone."
+            statusText = "No Microphone"
+            showMicrophonePermissionAlert()
+            return false
+        }
+    }
+
+    private func beginRecording() {
+        os_log(.info, log: recordingLog, "beginRecording() entered")
+        errorMessage = nil
+        isRecording = true
+        statusText = "Starting..."
+
+        // Show initializing dots only if engine takes longer than 0.5s to start
+        var overlayShown = false
+        let initTimer = DispatchSource.makeTimerSource(queue: .main)
+        initTimer.schedule(deadline: .now() + 0.5)
+        initTimer.setEventHandler { [weak self] in
+            guard let self, !overlayShown else { return }
+            overlayShown = true
+            os_log(.info, log: recordingLog, "engine slow — showing initializing overlay")
+            self.overlayManager.showInitializing()
+        }
+        initTimer.resume()
+
+        let deviceUID = selectedMicrophoneID
+        audioRecorder.onRecordingReady = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                initTimer.cancel()
+                os_log(.info, log: recordingLog, "first real audio — transitioning to waveform")
+                self.statusText = "Recording..."
+                if overlayShown {
+                    self.overlayManager.transitionToRecording()
+                } else {
+                    self.overlayManager.showRecording()
+                }
+                overlayShown = true
+                NSSound(named: "Tink")?.play()
+            }
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let t0 = CFAbsoluteTimeGetCurrent()
+            do {
+                try self.audioRecorder.startRecording(deviceUID: deviceUID)
+                os_log(.info, log: recordingLog, "audioRecorder.startRecording() done: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+                DispatchQueue.main.async {
+                    self.audioLevelCancellable = self.audioRecorder.$audioLevel
+                        .receive(on: DispatchQueue.main)
+                        .sink { [weak self] level in
+                            self?.overlayManager.updateAudioLevel(level)
+                        }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    initTimer.cancel()
+                    self.isRecording = false
+                    self.errorMessage = self.formattedRecordingStartError(error)
+                    self.statusText = "Error"
+                    self.overlayManager.dismiss()
+                }
+            }
+        }
+    }
+
+    private func formattedRecordingStartError(_ error: Error) -> String {
+        if let recorderError = error as? AudioRecorderError {
+            return "Failed to start recording: \(recorderError.localizedDescription)"
+        }
+
+        let lower = error.localizedDescription.lowercased()
+        if lower.contains("operation couldn't be completed") || lower.contains("operation could not be completed") {
+            return "Failed to start recording: Audio input error. Verify microphone access is granted and a working mic is selected."
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSOSStatusErrorDomain {
+            return "Failed to start recording (audio subsystem error \(nsError.code)). Check microphone permissions and selected input device."
+        }
+
+        return "Failed to start recording: \(error.localizedDescription)"
+    }
+
+    // MARK: - Transcription
+
+    func stopAndTranscribe() {
+        viLog(" stopAndTranscribe() entered")
+        os_log(.info, log: recordingLog, "stopAndTranscribe() entered")
+        audioLevelCancellable?.cancel()
+        audioLevelCancellable = nil
+
+        guard let fileURL = audioRecorder.stopRecording() else {
+            os_log(.error, log: recordingLog, "stopRecording() returned nil — no audio file")
+            audioRecorder.cleanup()
+            errorMessage = "No audio recorded"
+            isRecording = false
+            statusText = "Error"
+            return
+        }
+
+        viLog("Audio file: \(fileURL.path)")
+        os_log(.info, log: recordingLog, "Audio file: %{public}@", fileURL.path)
+
+        // Check file size
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
+        os_log(.info, log: recordingLog, "Audio file size: %d bytes", fileSize)
+
+        isRecording = false
+        isTranscribing = true
+        statusText = "Transcribing..."
+        errorMessage = nil
+        NSSound(named: "Pop")?.play()
+        overlayManager.slideUpToNotch { }
+
+        transcribingIndicatorTask?.cancel()
+        let indicatorDelay = transcribingIndicatorDelay
+        transcribingIndicatorTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(indicatorDelay * 1_000_000_000))
+                let shouldShowTranscribing = self?.isTranscribing ?? false
+                guard shouldShowTranscribing else { return }
+                await MainActor.run { [weak self] in
+                    self?.overlayManager.showTranscribing()
+                }
+            } catch {}
+        }
+
+        let transcriptionService = TranscriptionService()
+        viLog("Starting transcription, file size=\(fileSize) bytes")
+        os_log(.info, log: recordingLog, "Starting transcription task...")
+
+        Task {
+            do {
+                let rawTranscript = try await transcriptionService.transcribe(fileURL: fileURL)
+                let trimmed = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                viLog("Transcription result: '\(trimmed)' (length=\(trimmed.count))")
+                os_log(.info, log: recordingLog, "Transcription result: '%{public}@' (length=%d)", trimmed, trimmed.count)
+
+                await MainActor.run {
+                    self.transcribingIndicatorTask?.cancel()
+                    self.transcribingIndicatorTask = nil
+                    self.isTranscribing = false
+
+                    if trimmed.isEmpty {
+                        viLog("Empty transcription — nothing to insert")
+                        self.statusText = "Nothing to transcribe"
+                        NSSound(named: "Basso")?.play()
+                        self.overlayManager.dismiss()
+                    } else {
+                        self.lastTranscript = trimmed
+
+                        viLog("Calling TextInserter.insert()...")
+                        let insertResult = TextInserter.insert(trimmed)
+                        viLog("TextInserter result: \(insertResult)")
+
+                        switch insertResult {
+                        case .insertedViaAX:
+                            self.statusText = "已插入: \(trimmed.prefix(20))..."
+                            NSSound(named: "Glass")?.play()
+                        case .pastedViaClipboard:
+                            self.statusText = "已粘贴: \(trimmed.prefix(20))..."
+                            NSSound(named: "Glass")?.play()
+                        case .copiedToClipboard:
+                            self.statusText = "已复制到剪贴板（请手动粘贴）"
+                            NSSound(named: "Purr")?.play()
+                            self.showNotification(
+                                title: "已复制到剪贴板",
+                                body: "无法自动插入，请按 Cmd+V 粘贴：\(trimmed.prefix(50))"
+                            )
+                        }
+
+                        self.overlayManager.showDone()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                            self.overlayManager.dismiss()
+                        }
+                    }
+
+                    self.audioRecorder.cleanup()
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                        if self.statusText.hasPrefix("已插入") || self.statusText.hasPrefix("已粘贴") ||
+                           self.statusText.hasPrefix("已复制") || self.statusText.hasPrefix("识别失败") ||
+                           self.statusText == "Nothing to transcribe" {
+                            self.statusText = "Ready"
+                        }
+                    }
+                }
+            } catch {
+                viLog("Transcription FAILED: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.transcribingIndicatorTask?.cancel()
+                    self.transcribingIndicatorTask = nil
+                    self.errorMessage = error.localizedDescription
+                    self.isTranscribing = false
+                    self.statusText = "识别失败: \(error.localizedDescription.prefix(40))"
+                    NSSound(named: "Basso")?.play()
+                    self.showNotification(
+                        title: "语音识别失败",
+                        body: error.localizedDescription
+                    )
+                    self.audioRecorder.cleanup()
+                    self.overlayManager.dismiss()
+                }
+            }
+        }
+    }
+
+    // MARK: - Notifications
+
+    private func showNotification(title: String, body: String) {
+        let notification = NSUserNotification()
+        notification.title = title
+        notification.informativeText = body
+        NSUserNotificationCenter.default.deliver(notification)
+    }
+
+    // MARK: - Alerts
+
+    func showMicrophonePermissionAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Microphone Permission Required"
+        alert.informativeText = "VoiceInput cannot record audio without Microphone access.\n\nGo to System Settings > Privacy & Security > Microphone and enable VoiceInput."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Dismiss")
+        alert.icon = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+            if let url = settingsURL {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+
+    func showAccessibilityAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permission Required"
+        alert.informativeText = "VoiceInput cannot type transcriptions without Accessibility access.\n\nGo to System Settings > Privacy & Security > Accessibility and enable VoiceInput."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Dismiss")
+        alert.icon = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            openAccessibilitySettings()
+        }
+    }
+}

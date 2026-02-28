@@ -1,0 +1,19 @@
+# Build output
+speaklow-app/build/
+
+# macOS
+.DS_Store
+*.swp
+
+# Environment & secrets
+.env
+*.env
+
+# Claude Code
+.claude/
+
+# Go binary
+asr-bridge/asr-bridge
+
+# Misc
+macsleep
