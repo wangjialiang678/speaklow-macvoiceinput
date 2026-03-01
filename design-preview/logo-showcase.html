@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SpeakLow — Brand Identity</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --amber:   #F5C563;
+      --teal:    #4ECDC4;
+      --dark:    #0D0F12;
+      --warm-white: #E8E6E3;
+      --coral:   #FF6B6B;
+      --bg:      #F4F3F0;
+      --surface: #FFFFFF;
+      --border:  #E2E0DC;
+      --label:   #6B6660;
+      --text:    #1A1816;
+    }
+
+    html { font-size: 16px; }
+
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ---- Layout ---- */
+    .page-header {
+      background: var(--dark);
+      color: var(--warm-white);
+      padding: 64px 48px 56px;
+      position: relative;
+      overflow: hidden;
+    }
+    .page-header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #4ECDC4, #F5C563, #FF6B6B);
+    }
+    .page-header .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 20px;
+      border: 1px solid rgba(245,197,99,0.35);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+    .page-header h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+    .page-header h1 span { color: var(--amber); }
+    .page-header p {
+      margin-top: 14px;
+      font-size: 16px;
+      font-weight: 300;
+      color: rgba(232,230,227,0.65);
+      max-width: 480px;
+    }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 60px 24px 120px; }
+
+    /* ---- Section ---- */
+    .section { margin-bottom: 72px; }
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 28px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-header h2 {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--label);
+    }
+    .section-header .num {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--amber);
+      letter-spacing: 0.05em;
+    }
+
+    /* ---- Cards ---- */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .card-grid.wide {
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    }
+    .card-grid.cols-2 {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .card {
+      border-radius: 16px;
+      padding: 40px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      position: relative;
+      min-height: 180px;
+      justify-content: center;
+    }
+    .card.light {
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .card.dark {
+      background: var(--dark);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .card.amber-bg {
+      background: var(--amber);
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+    .card.teal-bg {
+      background: var(--teal);
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .card-label {
+      position: absolute;
+      bottom: 14px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: var(--label);
+    }
+    .card.dark .card-label { color: rgba(232,230,227,0.4); }
+    .card.amber-bg .card-label { color: rgba(13,15,18,0.5); }
+    .card.teal-bg .card-label { color: rgba(13,15,18,0.5); }
+
+    .card svg { max-width: 100%; height: auto; }
+
+    /* ---- Size strip ---- */
+    .size-strip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 40px;
+      display: flex;
+      align-items: flex-end;
+      gap: 28px;
+      flex-wrap: wrap;
+    }
+    .size-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .size-item span {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--label);
+      letter-spacing: 0.05em;
+    }
+
+    /* ---- Color palette ---- */
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+    }
+    .swatch {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .swatch-color {
+      height: 80px;
+    }
+    .swatch-info {
+      background: var(--surface);
+      padding: 12px 14px;
+    }
+    .swatch-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      display: block;
+      margin-bottom: 2px;
+    }
+    .swatch-hex {
+      font-size: 11px;
+      color: var(--label);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .swatch-role {
+      font-size: 10px;
+      color: var(--label);
+      margin-top: 4px;
+      display: block;
+    }
+
+    /* ---- Usage guidelines ---- */
+    .guidelines {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 40px;
+    }
+    .guidelines h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+    .guideline-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 32px;
+    }
+    .guideline-list li {
+      font-size: 13px;
+      color: var(--label);
+      padding-left: 18px;
+      position: relative;
+      line-height: 1.5;
+    }
+    .guideline-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 7px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+    }
+    .guideline-list li strong { color: var(--text); font-weight: 500; }
+
+    /* ---- Monochrome section ---- */
+    .mono-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    /* ---- Inline SVG display ---- */
+    .logo-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ---- Footer ---- */
+    footer {
+      text-align: center;
+      padding: 40px 24px;
+      font-size: 12px;
+      color: var(--label);
+      border-top: 1px solid var(--border);
+    }
+    footer code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      background: var(--border);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    @media (max-width: 680px) {
+      .card-grid.cols-2 { grid-template-columns: 1fr; }
+      .palette-grid { grid-template-columns: repeat(3, 1fr); }
+      .guideline-list { grid-template-columns: 1fr; }
+      .mono-row { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ========== PAGE HEADER ========== -->
+<header class="page-header">
+  <div class="tag">Brand Identity System</div>
+  <h1>Speak<span>Low</span></h1>
+  <p>macOS menu bar voice-to-text — visual identity guidelines &amp; logo assets</p>
+</header>
+
+<main>
+
+  <!-- ========== 01 BRAND MARK ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">01</span>
+      <h2>Brand Mark</h2>
+    </div>
+    <div class="card-grid">
+      <!-- Light -->
+      <div class="card light">
+        <div class="logo-display">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="120" height="120">
+            <defs>
+              <linearGradient id="s1-mg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/>
+              </linearGradient>
+            </defs>
+            <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+            <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#s1-mg)"/>
+            <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#s1-mg)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="32" y1="40" x2="32" y2="46" stroke="url(#s1-mg)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="24" y1="46" x2="40" y2="46" stroke="url(#s1-mg)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+            <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+            <path d="M12 20 Q4 28 12 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+            <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+            <path d="M52 20 Q60 28 52 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+          </svg>
+        </div>
+        <span class="card-label">Light background — 120px</span>
+      </div>
+
+      <!-- Dark -->
+      <div class="card dark">
+        <div class="logo-display">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="120" height="120">
+            <defs>
+              <linearGradient id="s2-mg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/>
+              </linearGradient>
+            </defs>
+            <rect x="4" y="4" width="56" height="56" rx="14" fill="#1A1D22"/>
+            <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#s2-mg)"/>
+            <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#s2-mg)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="32" y1="40" x2="32" y2="46" stroke="url(#s2-mg)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="24" y1="46" x2="40" y2="46" stroke="url(#s2-mg)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+            <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+            <path d="M12 20 Q4 28 12 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+            <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+            <path d="M52 20 Q60 28 52 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+          </svg>
+        </div>
+        <span class="card-label">Dark background — 120px</span>
+      </div>
+
+      <!-- Amber bg -->
+      <div class="card amber-bg">
+        <div class="logo-display">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="120" height="120">
+            <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+            <rect x="26" y="10" width="12" height="20" rx="6" fill="#F5C563"/>
+            <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="#F5C563" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="32" y1="40" x2="32" y2="46" stroke="#F5C563" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="24" y1="46" x2="40" y2="46" stroke="#F5C563" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M20 24 Q16 28 20 32" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+            <path d="M16 22 Q10 28 16 34" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            <path d="M44 24 Q48 28 44 32" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+            <path d="M48 22 Q54 28 48 34" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+          </svg>
+        </div>
+        <span class="card-label">Amber background — 120px</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========== 02 WORDMARK ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">02</span>
+      <h2>Wordmark</h2>
+    </div>
+    <div class="card-grid wide">
+      <div class="card light" style="padding: 48px 40px; min-height: 140px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" width="280" height="64">
+          <defs>
+            <linearGradient id="wm1-wg" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#4ECDC4"/>
+              <stop offset="60%" stop-color="#F5C563"/>
+              <stop offset="100%" stop-color="#F0A832"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 18 Q8 14 13 14 L24 14 Q29 14 29 19 Q29 24 22 24 L18 24 Q12 24 12 30 Q12 36 18 36 L28 36 Q33 36 33 41 Q33 46 28 46 L14 46 Q8 46 8 40" fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M40 46 L40 14 L52 14 Q62 14 62 22 Q62 30 52 30 L40 30" fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M70 14 L92 14 M70 30 L88 30 M70 46 L92 46 M70 14 L70 46" fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M100 46 L112 14 L124 46 M105 34 L119 34" fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M132 14 L132 46 M132 30 L148 14 M135 27 L148 46" fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 52 C30 48 50 56 80 52 C110 48 130 56 160 52 C190 48 210 56 240 52 C258 49 268 51 272 52" fill="none" stroke="url(#wm1-wg)" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M162 14 L162 46 L182 46" fill="none" stroke="#0D0F12" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <ellipse cx="203" cy="30" rx="12" ry="16" fill="none" stroke="#0D0F12" stroke-width="3.5"/>
+          <path d="M222 14 L231 46 L240 28 L249 46 L258 14" fill="none" stroke="#0D0F12" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="card-label">Light background</span>
+      </div>
+
+      <div class="card dark" style="padding: 48px 40px; min-height: 140px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" width="280" height="64">
+          <defs>
+            <linearGradient id="wm2-wg" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#4ECDC4"/>
+              <stop offset="60%" stop-color="#F5C563"/>
+              <stop offset="100%" stop-color="#F0A832"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 18 Q8 14 13 14 L24 14 Q29 14 29 19 Q29 24 22 24 L18 24 Q12 24 12 30 Q12 36 18 36 L28 36 Q33 36 33 41 Q33 46 28 46 L14 46 Q8 46 8 40" fill="none" stroke="#E8E6E3" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M40 46 L40 14 L52 14 Q62 14 62 22 Q62 30 52 30 L40 30" fill="none" stroke="#E8E6E3" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M70 14 L92 14 M70 30 L88 30 M70 46 L92 46 M70 14 L70 46" fill="none" stroke="#E8E6E3" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M100 46 L112 14 L124 46 M105 34 L119 34" fill="none" stroke="#E8E6E3" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M132 14 L132 46 M132 30 L148 14 M135 27 L148 46" fill="none" stroke="#E8E6E3" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 52 C30 48 50 56 80 52 C110 48 130 56 160 52 C190 48 210 56 240 52 C258 49 268 51 272 52" fill="none" stroke="url(#wm2-wg)" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+          <path d="M162 14 L162 46 L182 46" fill="none" stroke="#E8E6E3" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <ellipse cx="203" cy="30" rx="12" ry="16" fill="none" stroke="#E8E6E3" stroke-width="3.5"/>
+          <path d="M222 14 L231 46 L240 28 L249 46 L258 14" fill="none" stroke="#E8E6E3" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="card-label">Dark background</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 03 COMBINATION MARK ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">03</span>
+      <h2>Combination Mark</h2>
+    </div>
+    <div class="card-grid wide">
+      <div class="card light" style="padding: 48px 40px; min-height: 160px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 64" width="340" height="60">
+          <defs>
+            <linearGradient id="c1-mg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/>
+            </linearGradient>
+            <linearGradient id="c1-tw" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#4ECDC4"/>
+              <stop offset="60%" stop-color="#F5C563"/>
+              <stop offset="100%" stop-color="#F0A832"/>
+            </linearGradient>
+          </defs>
+          <!-- Icon -->
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#c1-mg)"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#c1-mg)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="url(#c1-mg)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="url(#c1-mg)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+          <!-- Divider -->
+          <line x1="76" y1="16" x2="76" y2="48" stroke="#0D0F12" stroke-width="1" opacity="0.12"/>
+          <!-- Wordmark -->
+          <g transform="translate(88,0)">
+            <path d="M0 18 Q0 14 5 14 L16 14 Q21 14 21 19 Q21 24 14 24 L10 24 Q4 24 4 30 Q4 36 10 36 L20 36 Q25 36 25 41 Q25 46 20 46 L6 46 Q0 46 0 40" fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M32 46 L32 14 L44 14 Q54 14 54 22 Q54 30 44 30 L32 30" fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M62 14 L84 14 M62 30 L80 30 M62 46 L84 46 M62 14 L62 46" fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M92 46 L104 14 L116 46 M97 34 L111 34" fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M124 14 L124 46 M124 30 L140 14 M127 27 L140 46" fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M0 52 C20 48 42 56 72 52 C102 48 122 56 152 52 C172 49 180 51 184 52" fill="none" stroke="url(#c1-tw)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+            <path d="M154 14 L154 46 L174 46" fill="none" stroke="#0D0F12" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <ellipse cx="195" cy="30" rx="12" ry="16" fill="none" stroke="#0D0F12" stroke-width="3"/>
+            <path d="M214 14 L223 46 L232 28 L241 46 L250 14" fill="none" stroke="#0D0F12" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+        </svg>
+        <span class="card-label">Light background</span>
+      </div>
+
+      <div class="card dark" style="padding: 48px 40px; min-height: 160px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 64" width="340" height="60">
+          <defs>
+            <linearGradient id="c2-mg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/>
+            </linearGradient>
+            <linearGradient id="c2-tw" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#4ECDC4"/>
+              <stop offset="60%" stop-color="#F5C563"/>
+              <stop offset="100%" stop-color="#F0A832"/>
+            </linearGradient>
+          </defs>
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#1A1D22"/>
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#c2-mg)"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#c2-mg)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="url(#c2-mg)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="url(#c2-mg)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+          <line x1="76" y1="16" x2="76" y2="48" stroke="#E8E6E3" stroke-width="1" opacity="0.12"/>
+          <g transform="translate(88,0)">
+            <path d="M0 18 Q0 14 5 14 L16 14 Q21 14 21 19 Q21 24 14 24 L10 24 Q4 24 4 30 Q4 36 10 36 L20 36 Q25 36 25 41 Q25 46 20 46 L6 46 Q0 46 0 40" fill="none" stroke="#E8E6E3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M32 46 L32 14 L44 14 Q54 14 54 22 Q54 30 44 30 L32 30" fill="none" stroke="#E8E6E3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M62 14 L84 14 M62 30 L80 30 M62 46 L84 46 M62 14 L62 46" fill="none" stroke="#E8E6E3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M92 46 L104 14 L116 46 M97 34 L111 34" fill="none" stroke="#E8E6E3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M124 14 L124 46 M124 30 L140 14 M127 27 L140 46" fill="none" stroke="#E8E6E3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M0 52 C20 48 42 56 72 52 C102 48 122 56 152 52 C172 49 180 51 184 52" fill="none" stroke="url(#c2-tw)" stroke-width="1.8" stroke-linecap="round" opacity="0.8"/>
+            <path d="M154 14 L154 46 L174 46" fill="none" stroke="#E8E6E3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <ellipse cx="195" cy="30" rx="12" ry="16" fill="none" stroke="#E8E6E3" stroke-width="3"/>
+            <path d="M214 14 L223 46 L232 28 L241 46 L250 14" fill="none" stroke="#E8E6E3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+        </svg>
+        <span class="card-label">Dark background</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 04 FAVICON ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">04</span>
+      <h2>Favicon</h2>
+    </div>
+    <div class="card-grid">
+      <div class="card light">
+        <div class="logo-display" style="gap: 24px; flex-direction: row; flex-wrap: wrap; justify-content: center;">
+          <!-- 16px actual -->
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="16" height="16">
+              <defs><linearGradient id="fav-l16" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+              <rect x="0" y="0" width="32" height="32" rx="7" fill="#0D0F12"/>
+              <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#fav-l16)"/>
+              <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+              <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+            </svg>
+            <span style="font-size:10px; color:var(--label);">16px</span>
+          </div>
+          <!-- 32px actual -->
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+              <defs><linearGradient id="fav-l32" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+              <rect x="0" y="0" width="32" height="32" rx="7" fill="#0D0F12"/>
+              <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#fav-l32)"/>
+              <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+              <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+            </svg>
+            <span style="font-size:10px; color:var(--label);">32px</span>
+          </div>
+          <!-- 64px enlarged -->
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="64" height="64">
+              <defs><linearGradient id="fav-l64" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+              <rect x="0" y="0" width="32" height="32" rx="7" fill="#0D0F12"/>
+              <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#fav-l64)"/>
+              <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+              <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+            </svg>
+            <span style="font-size:10px; color:var(--label);">64px (2x)</span>
+          </div>
+        </div>
+        <span class="card-label">Light background</span>
+      </div>
+
+      <div class="card dark">
+        <div class="logo-display" style="gap: 24px; flex-direction: row; flex-wrap: wrap; justify-content: center;">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="16" height="16">
+              <defs><linearGradient id="fav-d16" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+              <rect x="0" y="0" width="32" height="32" rx="7" fill="#252830"/>
+              <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#fav-d16)"/>
+              <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+              <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+            </svg>
+            <span style="font-size:10px; color:rgba(232,230,227,0.4);">16px</span>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+              <defs><linearGradient id="fav-d32" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+              <rect x="0" y="0" width="32" height="32" rx="7" fill="#252830"/>
+              <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#fav-d32)"/>
+              <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+              <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+            </svg>
+            <span style="font-size:10px; color:rgba(232,230,227,0.4);">32px</span>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="64" height="64">
+              <defs><linearGradient id="fav-d64" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+              <rect x="0" y="0" width="32" height="32" rx="7" fill="#252830"/>
+              <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#fav-d64)"/>
+              <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+              <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+            </svg>
+            <span style="font-size:10px; color:rgba(232,230,227,0.4);">64px (2x)</span>
+          </div>
+        </div>
+        <span class="card-label">Dark background</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 05 MONOCHROME ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">05</span>
+      <h2>Monochrome Versions</h2>
+    </div>
+    <div class="mono-row">
+      <!-- All black on white -->
+      <div class="card light">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="80" height="80">
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="none" stroke="#0D0F12" stroke-width="2"/>
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="#0D0F12"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="#0D0F12" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="#0D0F12" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="#0D0F12" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#0D0F12" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+        </svg>
+        <span class="card-label">Black on White</span>
+      </div>
+
+      <!-- All white on black -->
+      <div class="card dark">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="80" height="80">
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="#FFFFFF"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+        </svg>
+        <span class="card-label">White on Black</span>
+      </div>
+
+      <!-- Amber on dark -->
+      <div class="card" style="background:#1A1D22; border:1px solid rgba(255,255,255,0.06);">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="80" height="80">
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="#F5C563"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="#F5C563" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="#F5C563" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="#F5C563" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#F5C563" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#F5C563" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#F5C563" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#F5C563" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+        </svg>
+        <span class="card-label" style="color:rgba(232,230,227,0.4);">Amber on Dark</span>
+      </div>
+
+      <!-- Teal on dark -->
+      <div class="card" style="background:#0D0F12; border:1px solid rgba(78,205,196,0.15);">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="80" height="80">
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="#4ECDC4"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="#4ECDC4" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="#4ECDC4" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="#4ECDC4" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+        </svg>
+        <span class="card-label" style="color:rgba(232,230,227,0.4);">Teal on Black</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 06 SIZE TEST ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">06</span>
+      <h2>Size Test Strip</h2>
+    </div>
+    <div class="size-strip">
+      <!-- Each size renders the same favicon SVG at increasing pixel sizes -->
+      <div class="size-item">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="16" height="16">
+          <defs><linearGradient id="st16" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+          <rect width="32" height="32" rx="7" fill="#0D0F12"/>
+          <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#st16)"/>
+          <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+          <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+        </svg>
+        <span>16px</span>
+      </div>
+      <div class="size-item">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="24" height="24">
+          <defs><linearGradient id="st24" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+          <rect width="32" height="32" rx="7" fill="#0D0F12"/>
+          <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#st24)"/>
+          <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+          <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+        </svg>
+        <span>24px</span>
+      </div>
+      <div class="size-item">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+          <defs><linearGradient id="st32" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+          <rect width="32" height="32" rx="7" fill="#0D0F12"/>
+          <rect x="12" y="4" width="8" height="13" rx="4" fill="url(#st32)"/>
+          <path d="M8 14 Q8 22 16 22 Q24 22 24 14" fill="none" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="16" y1="22" x2="16" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="11" y1="26" x2="21" y2="26" stroke="#F5C563" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M9 12 Q6 16 9 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+          <path d="M23 12 Q26 16 23 20" fill="none" stroke="#4ECDC4" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+        </svg>
+        <span>32px</span>
+      </div>
+      <div class="size-item">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="48" height="48">
+          <defs><linearGradient id="st48" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#st48)"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#st48)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="url(#st48)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="url(#st48)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+        </svg>
+        <span>48px</span>
+      </div>
+      <div class="size-item">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+          <defs><linearGradient id="st64" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#st64)"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#st64)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="url(#st64)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="url(#st64)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+        </svg>
+        <span>64px</span>
+      </div>
+      <div class="size-item">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="128" height="128">
+          <defs><linearGradient id="st128" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#st128)"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#st128)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="url(#st128)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="url(#st128)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+          <path d="M12 20 Q4 28 12 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+          <path d="M52 20 Q60 28 52 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+        </svg>
+        <span>128px</span>
+      </div>
+      <div class="size-item">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256">
+          <defs><linearGradient id="st256" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5C563"/><stop offset="100%" stop-color="#F0A832"/></linearGradient></defs>
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+          <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#st256)"/>
+          <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#st256)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="32" y1="40" x2="32" y2="46" stroke="url(#st256)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="24" y1="46" x2="40" y2="46" stroke="url(#st256)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+          <path d="M12 20 Q4 28 12 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+          <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+          <path d="M52 20 Q60 28 52 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+        </svg>
+        <span>256px</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 07 COLOR PALETTE ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">07</span>
+      <h2>Color Palette</h2>
+    </div>
+    <div class="palette-grid">
+      <div class="swatch">
+        <div class="swatch-color" style="background:#F5C563;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Amber</span>
+          <span class="swatch-hex">#F5C563</span>
+          <span class="swatch-role">Primary — warmth of voice</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#4ECDC4;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Teal</span>
+          <span class="swatch-hex">#4ECDC4</span>
+          <span class="swatch-role">Secondary — technology</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#0D0F12;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Void</span>
+          <span class="swatch-hex">#0D0F12</span>
+          <span class="swatch-role">Dark — icon background</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#E8E6E3; border-bottom:1px solid #E2E0DC;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Warm White</span>
+          <span class="swatch-hex">#E8E6E3</span>
+          <span class="swatch-role">Light — text on dark</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#FF6B6B;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Coral</span>
+          <span class="swatch-hex">#FF6B6B</span>
+          <span class="swatch-role">Accent — alerts, recording</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 08 USAGE GUIDELINES ========== -->
+  <section class="section">
+    <div class="section-header">
+      <span class="num">08</span>
+      <h2>Usage Guidelines</h2>
+    </div>
+    <div class="guidelines">
+      <h3>Spacing &amp; Clear Space</h3>
+      <ul class="guideline-list">
+        <li><strong>Minimum clear space:</strong> Equal to the height of the microphone stand on all sides</li>
+        <li><strong>Minimum size (mark only):</strong> 20px — below this, use the favicon variant</li>
+        <li><strong>Minimum size (combo mark):</strong> 120px wide to maintain legibility of letterforms</li>
+        <li><strong>Preferred background:</strong> Void black (#0D0F12) or Warm white (#E8E6E3)</li>
+        <li><strong>Don't rotate:</strong> The mark is optimized for upright orientation only</li>
+        <li><strong>Don't recolor:</strong> Use the approved palette; no arbitrary tints or gradients</li>
+        <li><strong>Don't stretch:</strong> Always scale proportionally using the viewBox</li>
+        <li><strong>macOS menu bar:</strong> Use favicon at 18–22px with template image mode (single color)</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>SpeakLow Brand Identity &nbsp;|&nbsp; Bundle ID: <code>com.speaklow.app</code> &nbsp;|&nbsp; Assets in <code>design-preview/logos/</code></p>
+</footer>
+
+</body>
+</html>

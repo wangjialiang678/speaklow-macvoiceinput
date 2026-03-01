@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 64" role="img" aria-label="SpeakLow combination mark">
+  <defs>
+    <linearGradient id="combo-mark-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5C563"/>
+      <stop offset="100%" stop-color="#F0A832"/>
+    </linearGradient>
+    <linearGradient id="combo-wave-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4ECDC4"/>
+      <stop offset="100%" stop-color="#3BBFB6"/>
+    </linearGradient>
+    <linearGradient id="combo-text-wave" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4ECDC4"/>
+      <stop offset="60%" stop-color="#F5C563"/>
+      <stop offset="100%" stop-color="#F0A832"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ===== Brand Mark (left, 64x64 space) ===== -->
+  <g id="combo-icon" transform="translate(0, 0)">
+    <!-- Background rounded square -->
+    <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+
+    <!-- Mic body -->
+    <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#combo-mark-grad)"/>
+
+    <!-- Mic stand arc -->
+    <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#combo-mark-grad)" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Stand vertical -->
+    <line x1="32" y1="40" x2="32" y2="46" stroke="url(#combo-mark-grad)" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Base -->
+    <line x1="24" y1="46" x2="40" y2="46" stroke="url(#combo-mark-grad)" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Waves left -->
+    <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+    <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- Waves right -->
+    <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+    <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  </g>
+
+  <!-- Divider: subtle vertical line -->
+  <line x1="76" y1="16" x2="76" y2="48" stroke="#0D0F12" stroke-width="1" opacity="0.12"/>
+
+  <!-- ===== Wordmark (right side, offset 88px) ===== -->
+  <g id="combo-wordmark" transform="translate(88, 0)">
+
+    <!-- S -->
+    <path d="M0 18 Q0 14 5 14 L16 14 Q21 14 21 19 Q21 24 14 24 L10 24 Q4 24 4 30 Q4 36 10 36 L20 36 Q25 36 25 41 Q25 46 20 46 L6 46 Q0 46 0 40"
+          fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- P -->
+    <path d="M32 46 L32 14 L44 14 Q54 14 54 22 Q54 30 44 30 L32 30"
+          fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- E -->
+    <path d="M62 14 L84 14 M62 30 L80 30 M62 46 L84 46 M62 14 L62 46"
+          fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- A -->
+    <path d="M92 46 L104 14 L116 46 M97 34 L111 34"
+          fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- K -->
+    <path d="M124 14 L124 46 M124 30 L140 14 M127 27 L140 46"
+          fill="none" stroke="#0D0F12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Wave connector -->
+    <path d="M0 52 C20 48 42 56 72 52 C102 48 122 56 152 52 C172 49 180 51 184 52"
+          fill="none" stroke="url(#combo-text-wave)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+
+    <!-- L -->
+    <path d="M154 14 L154 46 L174 46"
+          fill="none" stroke="#0D0F12" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- O -->
+    <ellipse cx="195" cy="30" rx="12" ry="16" fill="none" stroke="#0D0F12" stroke-width="3"/>
+
+    <!-- W -->
+    <path d="M214 14 L223 46 L232 28 L241 46 L250 14"
+          fill="none" stroke="#0D0F12" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

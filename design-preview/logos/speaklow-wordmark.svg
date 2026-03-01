@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" role="img" aria-label="SpeakLow wordmark">
+  <defs>
+    <linearGradient id="wm-wave-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4ECDC4"/>
+      <stop offset="60%" stop-color="#F5C563"/>
+      <stop offset="100%" stop-color="#F0A832"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ===== "SPEAK" — built from geometric paths, bold weight feel ===== -->
+
+  <!-- S -->
+  <path d="M8 18 Q8 14 13 14 L24 14 Q29 14 29 19 Q29 24 22 24 L18 24 Q12 24 12 30 Q12 36 18 36 L28 36 Q33 36 33 41 Q33 46 28 46 L14 46 Q8 46 8 40"
+        fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- P -->
+  <path d="M40 46 L40 14 L52 14 Q62 14 62 22 Q62 30 52 30 L40 30"
+        fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- E -->
+  <path d="M70 14 L92 14 M70 30 L88 30 M70 46 L92 46 M70 14 L70 46"
+        fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- A -->
+  <path d="M100 46 L112 14 L124 46 M105 34 L119 34"
+        fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- K -->
+  <path d="M132 14 L132 46 M132 30 L148 14 M135 27 L148 46"
+        fill="none" stroke="#0D0F12" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Wave underline connecting SPEAK to LOW — the key design detail -->
+  <!-- Gentle waveform flows under the text as a connector/divider -->
+  <path d="M8 52 C30 48 50 56 80 52 C110 48 130 56 160 52 C190 48 210 56 240 52 C258 49 268 51 272 52"
+        fill="none" stroke="url(#wm-wave-grad)" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- ===== "LOW" — lighter, thinner strokes to create weight contrast ===== -->
+
+  <!-- L -->
+  <path d="M162 14 L162 46 L182 46"
+        fill="none" stroke="#0D0F12" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- O -->
+  <ellipse cx="203" cy="30" rx="12" ry="16" fill="none" stroke="#0D0F12" stroke-width="3.5"/>
+
+  <!-- W -->
+  <path d="M222 14 L231 46 L240 28 L249 46 L258 14"
+        fill="none" stroke="#0D0F12" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

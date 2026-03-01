@@ -1,0 +1,14 @@
+- name: whisper-wave
+  prompt: "flat vector logo mark, abstract sound wave transforming into flowing text lines, minimal geometric style, single deep indigo color on white background, clean sharp edges, elegant and quiet mood, no text, no gradient"
+
+- name: feather-voice
+  prompt: "flat vector logo of a single elegant feather with subtle sound wave ripples emanating from its tip, minimal clean lines, deep teal color on white background, negative space design, sophisticated and gentle, no text"
+
+- name: quotation-pulse
+  prompt: "flat vector abstract logo mark, a pair of quotation marks with a gentle pulse wave between them, minimal geometric style, single slate blue color on white background, modern minimalist, clean sharp edges, no text"
+
+- name: ear-flow
+  prompt: "minimal line art logo, single continuous line forming a stylized ear that flows into a cursor blinking line, deep navy blue on white background, elegant thin strokes, modern minimalist style, no text"
+
+- name: appicon-speak
+  prompt: "modern app icon design, abstract sound wave symbol that subtly forms the letter S, rounded square background in deep indigo blue, white icon element, flat design, clean and bold, suitable for macOS menu bar, no text"

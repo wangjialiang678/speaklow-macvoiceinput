@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SpeakLow brand mark">
+  <defs>
+    <linearGradient id="mark-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5C563"/>
+      <stop offset="100%" stop-color="#F0A832"/>
+    </linearGradient>
+    <linearGradient id="wave-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4ECDC4"/>
+      <stop offset="100%" stop-color="#3BBFB6"/>
+    </linearGradient>
+    <clipPath id="mark-clip">
+      <rect x="4" y="4" width="56" height="56" rx="14"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#0D0F12"/>
+
+  <!-- Mic body: rounded rectangle -->
+  <rect x="26" y="10" width="12" height="20" rx="6" fill="url(#mark-grad)"/>
+
+  <!-- Mic stand arc -->
+  <path d="M18 28 Q18 40 32 40 Q46 40 46 28" fill="none" stroke="url(#mark-grad)" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Stand vertical line -->
+  <line x1="32" y1="40" x2="32" y2="46" stroke="url(#mark-grad)" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Base bar -->
+  <line x1="24" y1="46" x2="40" y2="46" stroke="url(#mark-grad)" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Sound waves — left side (three arcs growing outward) -->
+  <path d="M20 24 Q16 28 20 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+  <path d="M16 22 Q10 28 16 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <path d="M12 20 Q4 28 12 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Sound waves — right side (three arcs growing outward) -->
+  <path d="M44 24 Q48 28 44 32" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+  <path d="M48 22 Q54 28 48 34" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <path d="M52 20 Q60 28 52 36" fill="none" stroke="#4ECDC4" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+</svg>

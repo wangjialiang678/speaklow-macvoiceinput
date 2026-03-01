@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpeakLow Mobile — frontend-design style</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS — Aurora Glass
+   ═══════════════════════════════════════════ */
+:root {
+  --bg-void: #030308;
+  --bg-deep: #050510;
+  --glass: rgba(255,255,255,0.05);
+  --glass-hover: rgba(255,255,255,0.1);
+  --glass-border: rgba(255,255,255,0.08);
+  --glass-border-hover: rgba(255,255,255,0.18);
+
+  --violet: #8B5CF6;
+  --fuchsia: #D946EF;
+  --pink: #EC4899;
+  --cyan: #06B6D4;
+  --emerald: #10B981;
+
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255,255,255,0.6);
+  --text-muted: rgba(255,255,255,0.3);
+
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --font-serif: 'Playfair Display', serif;
+  --font-mono: 'Space Mono', monospace;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg-void);
+  font-family: var(--font-body);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Noise */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ═══ PAGE BACKGROUND — ambient orbs ═══ */
+.page-bg {
+  position: fixed; inset: 0; z-index: 0; overflow: hidden;
+}
+.page-orb {
+  position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.3;
+  animation: orb-drift 25s ease-in-out infinite;
+}
+.page-orb-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(139,92,246,0.3), transparent 70%);
+  top: 10%; left: 20%;
+}
+.page-orb-2 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(217,70,239,0.2), transparent 70%);
+  bottom: 10%; right: 10%;
+  animation-delay: -10s;
+}
+
+@keyframes orb-drift {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(30px, -20px); }
+  66% { transform: translate(-20px, 30px); }
+}
+
+/* ═══════════════════════════════════════════
+   iPHONE 15 PRO FRAME
+   ═══════════════════════════════════════════ */
+.phone-wrapper {
+  position: relative;
+  z-index: 10;
+  animation: phone-float 6s ease-in-out infinite;
+}
+@keyframes phone-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Glow puddle under phone */
+.phone-glow {
+  position: absolute;
+  bottom: -60px; left: 50%; transform: translateX(-50%);
+  width: 300px; height: 80px;
+  background: radial-gradient(ellipse, rgba(139,92,246,0.25), rgba(217,70,239,0.1) 50%, transparent 80%);
+  filter: blur(30px);
+}
+
+.phone-frame {
+  position: relative;
+  width: 393px; height: 852px;
+  background: #1a1a1e;
+  border-radius: 56px;
+  padding: 12px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.1),
+    0 0 0 2px #2a2a2e,
+    0 0 0 4px #1a1a1e,
+    0 25px 80px rgba(0,0,0,0.6),
+    0 0 120px rgba(139,92,246,0.1);
+}
+
+/* Side buttons */
+.phone-frame::before {
+  content: '';
+  position: absolute;
+  left: -3px; top: 180px;
+  width: 3px; height: 32px;
+  background: #2a2a2e;
+  border-radius: 2px 0 0 2px;
+  box-shadow:
+    0 40px 0 0 #2a2a2e,
+    0 -50px 0 0 #2a2a2e;
+}
+.phone-frame::after {
+  content: '';
+  position: absolute;
+  right: -3px; top: 220px;
+  width: 3px; height: 64px;
+  background: #2a2a2e;
+  border-radius: 0 2px 2px 0;
+}
+
+.phone-screen {
+  width: 100%; height: 100%;
+  border-radius: 46px;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-deep);
+}
+
+/* Dynamic Island */
+.dynamic-island {
+  position: absolute;
+  top: 12px; left: 50%; transform: translateX(-50%);
+  width: 126px; height: 36px;
+  background: #000;
+  border-radius: 20px;
+  z-index: 50;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.05);
+}
+.dynamic-island::after {
+  content: '';
+  position: absolute;
+  right: 16px; top: 50%; transform: translateY(-50%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #1a1a2e, #000);
+  box-shadow: inset 0 0 2px rgba(139,92,246,0.3);
+}
+
+/* ═══ AURORA BACKGROUND inside phone ═══ */
+.aurora-bg {
+  position: absolute; inset: 0; z-index: 0;
+  overflow: hidden;
+}
+.aurora-layer {
+  position: absolute; border-radius: 50%; filter: blur(60px);
+  animation: aurora-move 12s ease-in-out infinite;
+}
+.aurora-1 {
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(139,92,246,0.2), transparent 70%);
+  top: -50px; left: -80px;
+}
+.aurora-2 {
+  width: 250px; height: 250px;
+  background: radial-gradient(circle, rgba(217,70,239,0.15), transparent 70%);
+  top: 30%; right: -60px;
+  animation-delay: -4s;
+  animation-duration: 15s;
+}
+.aurora-3 {
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(6,182,212,0.12), transparent 70%);
+  bottom: 10%; left: 20%;
+  animation-delay: -8s;
+  animation-duration: 18s;
+}
+
+@keyframes aurora-move {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(20px, -15px) scale(1.1); }
+  66% { transform: translate(-15px, 20px) scale(0.95); }
+}
+
+/* ═══════════════════════════════════════════
+   PHONE CONTENT
+   ═══════════════════════════════════════════ */
+.screen-content {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 60px 20px 0;
+}
+
+/* Status bar */
+.status-bar {
+  position: absolute;
+  top: 16px; left: 32px; right: 32px;
+  display: flex; justify-content: space-between;
+  font-size: 14px; font-weight: 600;
+  color: var(--text-primary);
+  z-index: 60;
+}
+.status-icons { display: flex; gap: 6px; align-items: center; }
+.status-icons svg { width: 16px; height: 16px; fill: var(--text-primary); }
+
+/* Top bar */
+.top-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0 16px;
+}
+.app-title {
+  font-family: var(--font-display);
+  font-size: 28px; font-weight: 800;
+  background: linear-gradient(135deg, var(--violet), var(--fuchsia));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.settings-btn {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+}
+.settings-btn svg { width: 20px; height: 20px; stroke: var(--text-secondary); fill: none; stroke-width: 1.5; }
+
+/* Animated gradient line */
+.gradient-line {
+  height: 2px;
+  background: linear-gradient(90deg, var(--violet), var(--fuchsia), var(--cyan), var(--violet));
+  background-size: 300% 100%;
+  border-radius: 1px;
+  animation: line-flow 4s linear infinite;
+  opacity: 0.5;
+  margin-bottom: 16px;
+}
+@keyframes line-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+/* ═══ RECORD AREA ═══ */
+.record-area {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 0 20px;
+}
+
+.record-btn-wrapper {
+  position: relative;
+  width: 140px; height: 140px;
+}
+
+/* Glow disc */
+.record-glow {
+  position: absolute; inset: -30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139,92,246,0.2), rgba(217,70,239,0.1) 40%, transparent 70%);
+  animation: glow-breathe 3s ease-in-out infinite;
+}
+@keyframes glow-breathe {
+  0%, 100% { opacity: 0.6; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+/* Ripple rings */
+.ripple-ring {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid;
+  animation: ripple-expand 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  opacity: 0;
+}
+.ripple-ring:nth-child(1) { border-color: rgba(139,92,246,0.4); animation-delay: 0s; }
+.ripple-ring:nth-child(2) { border-color: rgba(217,70,239,0.3); animation-delay: 0.6s; }
+.ripple-ring:nth-child(3) { border-color: rgba(236,72,153,0.25); animation-delay: 1.2s; }
+.ripple-ring:nth-child(4) { border-color: rgba(6,182,212,0.2); animation-delay: 1.8s; }
+
+@keyframes ripple-expand {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+body.recording .ripple-ring { animation-duration: 1.6s; }
+
+/* Main button */
+.record-btn {
+  position: absolute; inset: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--violet), var(--fuchsia));
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow:
+    0 0 30px rgba(139,92,246,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+  transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  border: none;
+}
+.record-btn:hover { transform: scale(1.05); }
+.record-btn:active { transform: scale(0.95); }
+
+.record-btn svg {
+  width: 40px; height: 40px;
+  fill: white;
+  transition: all 0.3s ease;
+}
+
+body.recording .record-btn {
+  background: linear-gradient(135deg, var(--pink), #FF3366);
+  box-shadow:
+    0 0 50px rgba(236,72,153,0.4),
+    0 0 100px rgba(236,72,153,0.15),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+  animation: btn-pulse 1.5s ease-in-out infinite;
+}
+@keyframes btn-pulse {
+  0%, 100% { box-shadow: 0 0 30px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.15); }
+  50% { box-shadow: 0 0 60px rgba(236,72,153,0.5), 0 0 100px rgba(236,72,153,0.2), inset 0 1px 0 rgba(255,255,255,0.15); }
+}
+
+.record-status {
+  margin-top: 20px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* ═══ TRANSCRIPTION AREA ═══ */
+.transcription-area {
+  flex: 1;
+  margin: 12px 0;
+  padding: 20px;
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  min-height: 120px;
+}
+.transcription-area::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--violet), var(--fuchsia), var(--cyan));
+}
+
+.transcript-label-m {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+
+.transcript-text-m {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.9);
+  letter-spacing: 0.2px;
+}
+.transcript-text-m .char {
+  opacity: 0;
+  animation: char-appear 0.3s ease forwards;
+}
+@keyframes char-appear {
+  from { opacity: 0; filter: blur(4px); }
+  to { opacity: 1; filter: blur(0); }
+}
+.transcript-cursor-m {
+  display: inline-block;
+  width: 2px; height: 20px;
+  background: var(--fuchsia);
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 1s step-end infinite;
+  box-shadow: 0 0 8px rgba(217,70,239,0.5);
+}
+@keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ═══ ACTION BAR ═══ */
+.action-bar {
+  display: flex; gap: 10px; justify-content: center;
+  padding: 8px 0;
+}
+.action-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 20px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 13px; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+.action-btn::before {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.3), transparent 50%, rgba(6,182,212,0.3));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: 0; transition: opacity 0.3s ease;
+}
+.action-btn:hover::before { opacity: 1; }
+.action-btn:hover { color: var(--text-primary); background: var(--glass-hover); }
+.action-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+
+/* ═══ HISTORY CARDS ═══ */
+.history-section {
+  padding: 8px 0 4px;
+}
+.history-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+}
+.history-card {
+  padding: 14px 16px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  margin-bottom: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.history-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; bottom: 0; width: 3px;
+  border-radius: 0 3px 3px 0;
+}
+.history-card:nth-child(2)::before { background: linear-gradient(180deg, var(--violet), var(--fuchsia)); }
+.history-card:nth-child(3)::before { background: linear-gradient(180deg, var(--cyan), var(--emerald)); }
+
+.history-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.history-preview {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ═══ TAB BAR ═══ */
+.tab-bar {
+  display: flex; justify-content: space-around;
+  padding: 10px 0 24px;
+  position: relative;
+}
+.tab-bar::before {
+  content: '';
+  position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+  background: var(--glass-border);
+}
+.tab-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer;
+  position: relative;
+}
+.tab-item svg {
+  width: 22px; height: 22px;
+  stroke: var(--text-muted); fill: none; stroke-width: 1.5;
+  transition: all 0.3s ease;
+}
+.tab-item span {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+.tab-item.active svg { stroke: var(--violet); }
+.tab-item.active span {
+  background: linear-gradient(135deg, var(--violet), var(--fuchsia));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.tab-item.active::after {
+  content: '';
+  position: absolute; bottom: -6px;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--fuchsia);
+  box-shadow: 0 0 8px var(--fuchsia);
+}
+
+/* ═══ TOAST ═══ */
+.toast {
+  position: absolute;
+  top: 70px; left: 50%; transform: translateX(-50%) translateY(-20px);
+  padding: 10px 24px;
+  background: rgba(16,185,129,0.15);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(16,185,129,0.3);
+  border-radius: 999px;
+  font-size: 13px; font-weight: 500;
+  color: var(--emerald);
+  z-index: 100;
+  opacity: 0; pointer-events: none;
+  transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ═══ STYLE BADGE ═══ */
+.style-badge {
+  position: fixed; bottom: 20px; right: 20px;
+  padding: 8px 16px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  z-index: 200;
+  letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+
+<div class="page-bg">
+  <div class="page-orb page-orb-1"></div>
+  <div class="page-orb page-orb-2"></div>
+</div>
+
+<div class="phone-wrapper">
+  <div class="phone-glow"></div>
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="dynamic-island"></div>
+
+      <!-- Aurora BG -->
+      <div class="aurora-bg">
+        <div class="aurora-layer aurora-1"></div>
+        <div class="aurora-layer aurora-2"></div>
+        <div class="aurora-layer aurora-3"></div>
+      </div>
+
+      <!-- STATUS BAR -->
+      <div class="status-bar">
+        <span>9:41</span>
+        <div class="status-icons">
+          <svg viewBox="0 0 16 16"><path d="M1 10l3-3h2l3 3M11 7l3-3v9"/></svg>
+          <svg viewBox="0 0 16 16"><path d="M1 4h3v8H1zM6 2h3v10H6zM11 6h3v6h-3z"/></svg>
+          <svg viewBox="0 0 16 16"><rect x="1" y="4" width="12" height="8" rx="1.5" stroke="currentColor" fill="none" stroke-width="1"/><rect x="3" y="6" width="6" height="4" rx="0.5" fill="currentColor"/><path d="M13 7h1.5a0.5 0.5 0 0 1 0.5 0.5v1a0.5 0.5 0 0 1-0.5 0.5H13" fill="currentColor"/></svg>
+        </div>
+      </div>
+
+      <div class="screen-content">
+        <!-- TOP BAR -->
+        <div class="top-bar">
+          <div class="app-title">SpeakLow</div>
+          <div class="settings-btn">
+            <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </div>
+        </div>
+
+        <div class="gradient-line"></div>
+
+        <!-- RECORD -->
+        <div class="record-area">
+          <div class="record-btn-wrapper">
+            <div class="record-glow"></div>
+            <div class="ripple-ring"></div>
+            <div class="ripple-ring"></div>
+            <div class="ripple-ring"></div>
+            <div class="ripple-ring"></div>
+            <button class="record-btn" id="recordBtn">
+              <svg viewBox="0 0 24 24" id="micIcon"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="19" x2="12" y2="23" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="8" y1="23" x2="16" y2="23" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <div class="record-status" id="recordStatus">Tap to speak</div>
+        </div>
+
+        <!-- TRANSCRIPTION -->
+        <div class="transcription-area">
+          <div class="transcript-label-m">Transcription</div>
+          <div class="transcript-text-m" id="transcriptText"></div>
+          <span class="transcript-cursor-m" id="transcriptCursor"></span>
+          <div class="toast" id="toast">Copied to clipboard</div>
+        </div>
+
+        <!-- ACTIONS -->
+        <div class="action-bar">
+          <button class="action-btn" id="copyBtn">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button class="action-btn" id="shareBtn">
+            <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share
+          </button>
+          <button class="action-btn" id="clearBtn">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V3h6v3"/></svg>
+            Clear
+          </button>
+        </div>
+
+        <!-- HISTORY -->
+        <div class="history-section">
+          <div class="history-title">Recent</div>
+          <div class="history-card" data-text="implement the websocket handler for real-time audio streaming with proper error recovery...">
+            <div class="history-time">14:23 — VS Code</div>
+            <div class="history-preview">implement the websocket handler for real-time audio streaming...</div>
+          </div>
+          <div class="history-card" data-text="meeting notes: discussed the new hotkey configuration system, agreed on modifier plus function key...">
+            <div class="history-time">14:11 — Notes</div>
+            <div class="history-preview">meeting notes: discussed the new hotkey configuration system...</div>
+          </div>
+        </div>
+
+        <!-- TAB BAR -->
+        <div class="tab-bar">
+          <div class="tab-item active">
+            <svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" fill="none"/><path d="M9 12h1.5l1.5-3 2 6 1.5-3H18" fill="none"/></svg>
+            <span>Home</span>
+          </div>
+          <div class="tab-item">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none"/><polyline points="12 6 12 12 16 14" fill="none"/></svg>
+            <span>History</span>
+          </div>
+          <div class="tab-item">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4" fill="none"/></svg>
+            <span>Settings</span>
+          </div>
+          <div class="tab-item">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none"/><line x1="12" y1="16" x2="12" y2="12" fill="none"/><line x1="12" y1="8" x2="12.01" y2="8" fill="none"/></svg>
+            <span>About</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="style-badge">FRONTEND-DESIGN</div>
+
+<script>
+const recordBtn = document.getElementById('recordBtn');
+const recordStatus = document.getElementById('recordStatus');
+const transcriptText = document.getElementById('transcriptText');
+const transcriptCursor = document.getElementById('transcriptCursor');
+const toast = document.getElementById('toast');
+let isRecording = false;
+let typeTimer = null;
+
+const demoText = "The quick brown fox jumps over the lazy dog. Today we need to discuss the quarterly review and prepare the presentation for Friday's meeting.";
+
+function typeText(text, container) {
+  container.innerHTML = '';
+  let i = 0;
+  clearTimeout(typeTimer);
+
+  function addChar() {
+    if (i < text.length) {
+      const span = document.createElement('span');
+      span.className = 'char';
+      span.textContent = text[i];
+      span.style.animationDelay = '0s';
+      container.appendChild(span);
+      i++;
+      typeTimer = setTimeout(addChar, 35 + Math.random() * 30);
+    }
+  }
+  addChar();
+}
+
+// Auto demo on load
+setTimeout(() => typeText(demoText, transcriptText), 800);
+
+// Record toggle
+recordBtn.addEventListener('click', () => {
+  isRecording = !isRecording;
+  document.body.classList.toggle('recording', isRecording);
+
+  if (isRecording) {
+    recordStatus.textContent = 'Listening...';
+    transcriptText.innerHTML = '';
+
+    setTimeout(() => {
+      isRecording = false;
+      document.body.classList.remove('recording');
+      recordStatus.textContent = 'Processing...';
+
+      setTimeout(() => {
+        recordStatus.textContent = 'Tap to speak';
+        typeText(demoText, transcriptText);
+      }, 1200);
+    }, 4000);
+  } else {
+    recordStatus.textContent = 'Tap to speak';
+  }
+});
+
+// Copy
+document.getElementById('copyBtn').addEventListener('click', () => {
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+});
+
+// Clear
+document.getElementById('clearBtn').addEventListener('click', () => {
+  transcriptText.innerHTML = '';
+});
+
+// History cards
+document.querySelectorAll('.history-card').forEach(card => {
+  card.style.cursor = 'pointer';
+  card.addEventListener('click', () => {
+    typeText(card.dataset.text, transcriptText);
+  });
+});
+</script>
+</body>
+</html>

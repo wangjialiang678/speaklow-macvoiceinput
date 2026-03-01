@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpeakLow — Mobile UI Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=Literata:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─────────────────────────────────────────
+       Design Tokens
+    ───────────────────────────────────────── */
+    :root {
+      --deep:    #0A0E1A;
+      --surface: #141824;
+      --elevated:#1C2235;
+      --coral:   #FF6B6B;
+      --coral-dim: rgba(255,107,107,0.18);
+      --coral-glow: rgba(255,107,107,0.35);
+      --sage:    #A8D5BA;
+      --sage-dim: rgba(168,213,186,0.15);
+      --ivory:   #F7F5F0;
+      --mist:    #8890A4;
+      --whisper: #3A3F52;
+
+      --font-head: 'DM Sans', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-text: 'Literata', Georgia, serif;
+
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 24px;
+      --radius-pill: 100px;
+
+      --transition-base: 240ms cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ─────────────────────────────────────────
+       Page Shell
+    ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #06080F;
+      background-image:
+        radial-gradient(ellipse 60% 50% at 25% 20%, rgba(255,107,107,0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 50% at 75% 80%, rgba(168,213,186,0.05) 0%, transparent 70%);
+      font-family: var(--font-body);
+      padding: 40px 20px;
+      overflow-x: hidden;
+    }
+
+    /* ─────────────────────────────────────────
+       iPhone 15 Pro Frame
+    ───────────────────────────────────────── */
+    .phone-frame {
+      position: relative;
+      width: 393px;
+      height: 852px;
+      border-radius: 55px;
+      background: #1A1A1C;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.12),
+        0 0 0 3px #2A2A2E,
+        0 0 0 4px rgba(255,255,255,0.06),
+        0 40px 120px rgba(0,0,0,0.8),
+        0 20px 60px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+
+    /* Side buttons */
+    .phone-frame::before {
+      content: '';
+      position: absolute;
+      left: -4px;
+      top: 140px;
+      width: 4px;
+      height: 36px;
+      background: #2A2A2E;
+      border-radius: 3px 0 0 3px;
+      box-shadow: 0 56px 0 #2A2A2E, 0 96px 0 #2A2A2E;
+    }
+    .phone-frame::after {
+      content: '';
+      position: absolute;
+      right: -4px;
+      top: 170px;
+      width: 4px;
+      height: 70px;
+      background: #2A2A2E;
+      border-radius: 0 3px 3px 0;
+    }
+
+    /* Screen Clip */
+    .phone-screen {
+      position: absolute;
+      inset: 12px;
+      border-radius: 44px;
+      overflow: hidden;
+      background: var(--deep);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Dynamic Island */
+    .dynamic-island {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120px;
+      height: 34px;
+      background: #000;
+      border-radius: 20px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 10px;
+      gap: 6px;
+    }
+    .dynamic-island::after {
+      content: '';
+      width: 10px;
+      height: 10px;
+      background: #1a1a1a;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.04), inset 0 0 4px rgba(0,150,255,0.3);
+    }
+
+    /* ─────────────────────────────────────────
+       Status Bar
+    ───────────────────────────────────────── */
+    .status-bar {
+      position: relative;
+      z-index: 50;
+      height: 60px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0 28px 8px;
+      flex-shrink: 0;
+    }
+    .status-time {
+      font-family: var(--font-head);
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ivory);
+      letter-spacing: -0.3px;
+    }
+    .status-icons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-icons svg {
+      color: var(--ivory);
+      opacity: 0.9;
+    }
+    .battery-icon {
+      display: flex;
+      align-items: center;
+      gap: 1px;
+    }
+    .battery-body {
+      width: 24px;
+      height: 12px;
+      border: 1.5px solid rgba(247,245,240,0.8);
+      border-radius: 3px;
+      padding: 1.5px;
+    }
+    .battery-fill {
+      width: 80%;
+      height: 100%;
+      background: var(--ivory);
+      border-radius: 1px;
+    }
+    .battery-tip {
+      width: 2px;
+      height: 5px;
+      background: rgba(247,245,240,0.6);
+      border-radius: 0 1px 1px 0;
+    }
+
+    /* ─────────────────────────────────────────
+       Scrollable Content
+    ───────────────────────────────────────── */
+    .scroll-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      scrollbar-width: none;
+    }
+    .scroll-content::-webkit-scrollbar { display: none; }
+
+    /* ─────────────────────────────────────────
+       Top Bar / Nav
+    ───────────────────────────────────────── */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      padding: 4px 24px 16px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .app-title {
+      font-family: var(--font-head);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--ivory);
+      letter-spacing: -0.5px;
+    }
+    .app-title span {
+      color: var(--coral);
+    }
+    .top-bar-waveform {
+      flex: 1;
+      margin: 0 14px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      gap: 2.5px;
+      overflow: hidden;
+    }
+    .wave-bar {
+      width: 2px;
+      background: var(--whisper);
+      border-radius: 2px;
+      animation: waveIdle 2.4s ease-in-out infinite;
+    }
+    .wave-bar:nth-child(1)  { height: 4px;  animation-delay: 0s; }
+    .wave-bar:nth-child(2)  { height: 8px;  animation-delay: 0.15s; }
+    .wave-bar:nth-child(3)  { height: 14px; animation-delay: 0.3s; }
+    .wave-bar:nth-child(4)  { height: 6px;  animation-delay: 0.45s; }
+    .wave-bar:nth-child(5)  { height: 10px; animation-delay: 0.6s; }
+    .wave-bar:nth-child(6)  { height: 16px; animation-delay: 0.75s; }
+    .wave-bar:nth-child(7)  { height: 7px;  animation-delay: 0.9s; }
+    .wave-bar:nth-child(8)  { height: 12px; animation-delay: 1.05s; }
+    .wave-bar:nth-child(9)  { height: 5px;  animation-delay: 1.2s; }
+    .wave-bar:nth-child(10) { height: 9px;  animation-delay: 1.35s; }
+    .wave-bar:nth-child(11) { height: 13px; animation-delay: 1.5s; }
+    .wave-bar:nth-child(12) { height: 6px;  animation-delay: 1.65s; }
+    .wave-bar:nth-child(13) { height: 11px; animation-delay: 1.8s; }
+    .wave-bar:nth-child(14) { height: 4px;  animation-delay: 1.95s; }
+    .wave-bar:nth-child(15) { height: 8px;  animation-delay: 2.1s; }
+
+    @keyframes waveIdle {
+      0%, 100% { opacity: 0.25; transform: scaleY(1); }
+      50%       { opacity: 0.55; transform: scaleY(1.3); }
+    }
+
+    .settings-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 1px solid var(--whisper);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background var(--transition-base);
+    }
+    .settings-btn:hover { background: var(--elevated); }
+    .settings-btn svg { color: var(--mist); }
+
+    /* ─────────────────────────────────────────
+       Hero Record Area
+    ───────────────────────────────────────── */
+    .record-hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 24px 20px;
+      position: relative;
+    }
+
+    .record-stage {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Ripple rings */
+    .ripple-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1.5px solid var(--coral);
+      opacity: 0;
+    }
+    .ripple-ring-1 { width: 140px; height: 140px; animation: rippleOut 2.4s ease-out infinite 0s; }
+    .ripple-ring-2 { width: 165px; height: 165px; animation: rippleOut 2.4s ease-out infinite 0.6s; }
+    .ripple-ring-3 { width: 190px; height: 190px; animation: rippleOut 2.4s ease-out infinite 1.2s; }
+    .ripple-ring-4 { width: 215px; height: 215px; animation: rippleOut 2.4s ease-out infinite 1.8s; }
+
+    /* Soft ambient glow disk — always visible */
+    .record-glow {
+      position: absolute;
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--coral-glow) 0%, transparent 70%);
+      animation: glowPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes rippleOut {
+      0%   { opacity: 0.6; transform: scale(0.65); }
+      100% { opacity: 0;   transform: scale(1);    }
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { transform: scale(0.9); opacity: 0.6; }
+      50%       { transform: scale(1.1); opacity: 1;   }
+    }
+
+    /* Record Button */
+    .record-btn {
+      position: relative;
+      z-index: 10;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #FF8A8A, #FF6B6B 55%, #E54545);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow:
+        0 0 0 6px var(--coral-dim),
+        0 8px 32px rgba(255,107,107,0.45),
+        0 2px 8px rgba(0,0,0,0.4),
+        inset 0 2px 4px rgba(255,255,255,0.25),
+        inset 0 -3px 6px rgba(0,0,0,0.2);
+      transition:
+        transform 180ms cubic-bezier(0.34,1.56,0.64,1),
+        box-shadow 180ms ease;
+      animation: btnBreath 4s ease-in-out infinite;
+    }
+    .record-btn:active,
+    .record-btn.recording {
+      transform: scale(0.93);
+      box-shadow:
+        0 0 0 10px var(--coral-dim),
+        0 4px 20px rgba(255,107,107,0.6),
+        0 2px 4px rgba(0,0,0,0.3),
+        inset 0 2px 4px rgba(255,255,255,0.2),
+        inset 0 -2px 4px rgba(0,0,0,0.15);
+      animation: none;
+    }
+    .record-btn:hover {
+      transform: scale(1.04);
+    }
+
+    @keyframes btnBreath {
+      0%, 100% { transform: scale(1); }
+      50%       { transform: scale(1.03); }
+    }
+
+    /* Mic icon SVG inside button */
+    .mic-icon {
+      color: #fff;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+    }
+
+    /* Inner animated waveform when recording */
+    .btn-wave {
+      position: absolute;
+      bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .record-btn.recording .btn-wave {
+      opacity: 1;
+    }
+    .record-btn.recording .mic-icon {
+      opacity: 0;
+    }
+    .btn-wave-bar {
+      width: 3px;
+      background: rgba(255,255,255,0.9);
+      border-radius: 2px;
+      animation: btnWaveBar 0.6s ease-in-out infinite alternate;
+    }
+    .btn-wave-bar:nth-child(1) { height: 10px; animation-delay: 0s; }
+    .btn-wave-bar:nth-child(2) { height: 18px; animation-delay: 0.1s; }
+    .btn-wave-bar:nth-child(3) { height: 26px; animation-delay: 0.2s; }
+    .btn-wave-bar:nth-child(4) { height: 18px; animation-delay: 0.1s; }
+    .btn-wave-bar:nth-child(5) { height: 10px; animation-delay: 0s; }
+    @keyframes btnWaveBar {
+      from { transform: scaleY(0.5); }
+      to   { transform: scaleY(1); }
+    }
+
+    /* Status Text */
+    .record-status {
+      margin-top: 20px;
+      font-family: var(--font-head);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--mist);
+      letter-spacing: 0.2px;
+      height: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .record-status .status-label {
+      display: block;
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s;
+    }
+
+    /* ─────────────────────────────────────────
+       Duration Badge (shown while recording)
+    ───────────────────────────────────────── */
+    .duration-badge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      background: var(--surface);
+      border: 1px solid var(--whisper);
+      border-radius: var(--radius-pill);
+      padding: 6px 14px;
+    }
+    .duration-badge.visible { display: flex; }
+    .dot-pulse {
+      width: 7px;
+      height: 7px;
+      background: var(--coral);
+      border-radius: 50%;
+      animation: dotPulse 1s ease-in-out infinite;
+    }
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.7); }
+    }
+    .duration-text {
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--mist);
+      letter-spacing: 0.5px;
+    }
+
+    /* ─────────────────────────────────────────
+       Transcription Area
+    ───────────────────────────────────────── */
+    .transcription-section {
+      margin: 8px 20px 0;
+      background: var(--surface);
+      border: 1px solid var(--whisper);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .transcription-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px 10px;
+      border-bottom: 1px solid var(--whisper);
+    }
+    .transcription-label {
+      font-family: var(--font-head);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--mist);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .transcription-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--sage-dim);
+      border: 1px solid rgba(168,213,186,0.25);
+      border-radius: var(--radius-pill);
+      padding: 3px 10px;
+    }
+    .transcription-badge-dot {
+      width: 5px;
+      height: 5px;
+      background: var(--sage);
+      border-radius: 50%;
+    }
+    .transcription-badge-text {
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--sage);
+    }
+    .transcription-body {
+      padding: 16px 18px 18px;
+      min-height: 110px;
+      max-height: 160px;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .transcription-body::-webkit-scrollbar { display: none; }
+    .transcription-text {
+      font-family: var(--font-text);
+      font-size: 15.5px;
+      font-weight: 400;
+      line-height: 1.7;
+      color: var(--ivory);
+      letter-spacing: 0.1px;
+    }
+    /* Cursor blink at end of typewriter */
+    .cursor-blink {
+      display: inline-block;
+      width: 2px;
+      height: 1em;
+      background: var(--coral);
+      vertical-align: text-bottom;
+      margin-left: 2px;
+      animation: cursorBlink 1s step-end infinite;
+    }
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ─────────────────────────────────────────
+       Action Bar
+    ───────────────────────────────────────── */
+    .action-bar {
+      display: flex;
+      gap: 10px;
+      padding: 14px 20px 0;
+      flex-shrink: 0;
+    }
+    .action-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 46px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--whisper);
+      background: var(--surface);
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--mist);
+      transition:
+        background var(--transition-base),
+        border-color var(--transition-base),
+        color var(--transition-base),
+        transform 120ms ease;
+    }
+    .action-btn:hover  { background: var(--elevated); color: var(--ivory); border-color: rgba(255,255,255,0.12); }
+    .action-btn:active { transform: scale(0.96); }
+    .action-btn.primary {
+      background: var(--coral-dim);
+      border-color: rgba(255,107,107,0.3);
+      color: var(--coral);
+    }
+    .action-btn.primary:hover {
+      background: rgba(255,107,107,0.28);
+      border-color: rgba(255,107,107,0.5);
+    }
+    .action-btn svg { flex-shrink: 0; }
+
+    /* ─────────────────────────────────────────
+       History Section
+    ───────────────────────────────────────── */
+    .history-section {
+      padding: 20px 20px 0;
+      flex-shrink: 0;
+    }
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .history-title {
+      font-family: var(--font-head);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--mist);
+      letter-spacing: 0.3px;
+    }
+    .history-see-all {
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--coral);
+      cursor: pointer;
+    }
+    .history-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .history-card {
+      background: var(--surface);
+      border: 1px solid var(--whisper);
+      border-radius: var(--radius-md);
+      padding: 13px 15px;
+      cursor: pointer;
+      transition: background var(--transition-base), border-color var(--transition-base);
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .history-card:hover {
+      background: var(--elevated);
+      border-color: rgba(255,255,255,0.1);
+    }
+    .history-card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: var(--elevated);
+      border: 1px solid var(--whisper);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .history-card-body { flex: 1; min-width: 0; }
+    .history-card-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .history-card-time {
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--mist);
+    }
+    .history-card-duration {
+      font-family: var(--font-body);
+      font-size: 11px;
+      color: var(--whisper);
+    }
+    .history-card-text {
+      font-family: var(--font-text);
+      font-size: 13px;
+      line-height: 1.5;
+      color: rgba(247,245,240,0.7);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Swipe hint */
+    .swipe-hint {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      margin-top: 12px;
+      padding-bottom: 8px;
+    }
+    .swipe-hint-text {
+      font-family: var(--font-body);
+      font-size: 11px;
+      color: var(--whisper);
+    }
+    .swipe-arrow {
+      color: var(--whisper);
+      animation: swipeHint 2s ease-in-out infinite;
+    }
+    @keyframes swipeHint {
+      0%, 100% { transform: translateX(0); opacity: 0.6; }
+      50%       { transform: translateX(4px); opacity: 1; }
+    }
+
+    /* ─────────────────────────────────────────
+       Bottom Tab Bar
+    ───────────────────────────────────────── */
+    .tab-bar {
+      flex-shrink: 0;
+      margin-top: auto;
+      padding: 0 10px;
+      border-top: 1px solid var(--whisper);
+      background: rgba(10,14,26,0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      height: 76px;
+      padding-bottom: 10px;
+    }
+    .tab-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      padding: 8px 0;
+      border-radius: var(--radius-sm);
+      transition: opacity var(--transition-base);
+    }
+    .tab-item:hover { opacity: 0.85; }
+    .tab-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tab-label {
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+    .tab-item.active .tab-label { color: var(--coral); }
+    .tab-item.active .tab-icon svg { color: var(--coral); }
+    .tab-item:not(.active) .tab-label { color: var(--mist); }
+    .tab-item:not(.active) .tab-icon svg { color: var(--mist); }
+
+    /* Active indicator dot */
+    .tab-indicator {
+      position: absolute;
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 4px;
+      background: var(--coral);
+      border-radius: 50%;
+    }
+
+    /* ─────────────────────────────────────────
+       State: Recording
+    ───────────────────────────────────────── */
+    /* ripple rings accelerate when recording */
+    .phone-screen.recording .ripple-ring-1 { animation-duration: 1.6s; }
+    .phone-screen.recording .ripple-ring-2 { animation-duration: 1.6s; }
+    .phone-screen.recording .ripple-ring-3 { animation-duration: 1.6s; }
+    .phone-screen.recording .ripple-ring-4 { animation-duration: 1.6s; }
+    .phone-screen.recording .ripple-ring { border-color: var(--coral); opacity: 0; }
+    .phone-screen.recording .wave-bar {
+      background: var(--coral);
+      opacity: 0.6;
+      animation-duration: 0.6s;
+    }
+
+    /* ─────────────────────────────────────────
+       Page Label (outside phone)
+    ───────────────────────────────────────── */
+    .page-label {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: rgba(136,144,164,0.5);
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    /* ─────────────────────────────────────────
+       Toast Notification
+    ───────────────────────────────────────── */
+    .toast {
+      position: absolute;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-10px);
+      background: var(--elevated);
+      border: 1px solid var(--whisper);
+      border-radius: var(--radius-pill);
+      padding: 9px 18px;
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ivory);
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+      z-index: 200;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ─────────────────────────────────────────
+       Divider
+    ───────────────────────────────────────── */
+    .divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--whisper) 30%, var(--whisper) 70%, transparent);
+      margin: 0 20px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Page background label -->
+  <div class="page-label">SpeakLow — Mobile UI Mockup &nbsp;·&nbsp; Design Preview</div>
+
+  <!-- iPhone 15 Pro Frame -->
+  <div class="phone-frame">
+    <div class="phone-screen" id="phoneScreen">
+
+      <!-- Dynamic Island -->
+      <div class="dynamic-island"></div>
+
+      <!-- Toast -->
+      <div class="toast" id="toast"></div>
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span class="status-time" id="statusTime">9:41</span>
+        <div class="status-icons">
+          <!-- Signal bars -->
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+            <rect x="0"  y="8"  width="3" height="4"  rx="1" fill="currentColor" opacity="0.3"/>
+            <rect x="4.5" y="5.5" width="3" height="6.5" rx="1" fill="currentColor" opacity="0.5"/>
+            <rect x="9"  y="3"  width="3" height="9"  rx="1" fill="currentColor" opacity="0.75"/>
+            <rect x="13.5" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+          </svg>
+          <!-- WiFi -->
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+            <path d="M8 10a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" fill="currentColor"/>
+            <path d="M4.5 7.2A4.9 4.9 0 0 1 8 6a4.9 4.9 0 0 1 3.5 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/>
+            <path d="M1.5 4.2A8.4 8.4 0 0 1 8 2a8.4 8.4 0 0 1 6.5 2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none" opacity="0.6"/>
+          </svg>
+          <!-- Battery -->
+          <div class="battery-icon">
+            <div class="battery-body"><div class="battery-fill"></div></div>
+            <div class="battery-tip"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Bar -->
+      <div class="top-bar">
+        <span class="app-title">Speak<span>Low</span></span>
+        <div class="top-bar-waveform">
+          <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+          <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+          <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+          <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+          <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        </div>
+        <button class="settings-btn" onclick="showToast('Settings coming soon')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Scrollable Content -->
+      <div class="scroll-content">
+
+        <!-- Hero Record Area -->
+        <div class="record-hero">
+          <div class="record-stage">
+            <!-- Ambient glow -->
+            <div class="record-glow"></div>
+            <!-- Ripple rings -->
+            <div class="ripple-ring ripple-ring-1"></div>
+            <div class="ripple-ring ripple-ring-2"></div>
+            <div class="ripple-ring ripple-ring-3"></div>
+            <div class="ripple-ring ripple-ring-4"></div>
+            <!-- Record Button -->
+            <button class="record-btn" id="recordBtn" onclick="toggleRecording()">
+              <!-- Mic Icon -->
+              <svg class="mic-icon" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="2" width="6" height="12" rx="3"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8"  y1="23" x2="16" y2="23"/>
+              </svg>
+              <!-- Wave bars (shown while recording) -->
+              <div class="btn-wave">
+                <div class="btn-wave-bar"></div>
+                <div class="btn-wave-bar"></div>
+                <div class="btn-wave-bar"></div>
+                <div class="btn-wave-bar"></div>
+                <div class="btn-wave-bar"></div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Status text -->
+          <div class="record-status">
+            <span class="status-label" id="statusLabel">Hold to speak</span>
+          </div>
+
+          <!-- Duration badge (recording) -->
+          <div class="duration-badge" id="durationBadge">
+            <div class="dot-pulse"></div>
+            <span class="duration-text" id="durationText">0:00</span>
+          </div>
+        </div>
+
+        <!-- Transcription -->
+        <div class="transcription-section">
+          <div class="transcription-header">
+            <span class="transcription-label">Transcription</span>
+            <div class="transcription-badge">
+              <div class="transcription-badge-dot"></div>
+              <span class="transcription-badge-text">Complete</span>
+            </div>
+          </div>
+          <div class="transcription-body">
+            <p class="transcription-text" id="transcriptionText"></p>
+          </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+          <button class="action-btn primary" onclick="copyText()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copy
+          </button>
+          <button class="action-btn" onclick="showToast('Shared to clipboard')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+            Share
+          </button>
+          <button class="action-btn" onclick="clearText()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4h6v2"/>
+            </svg>
+            Clear
+          </button>
+        </div>
+
+        <!-- Divider -->
+        <div class="divider" style="margin-top:18px;"></div>
+
+        <!-- History Section -->
+        <div class="history-section">
+          <div class="history-header">
+            <span class="history-title">Recent</span>
+            <span class="history-see-all" onclick="showToast('History view')">See all</span>
+          </div>
+          <div class="history-cards">
+
+            <div class="history-card" onclick="loadHistory(0)">
+              <div class="history-card-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8890A4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                </svg>
+              </div>
+              <div class="history-card-body">
+                <div class="history-card-meta">
+                  <span class="history-card-time">Today, 2:14 PM</span>
+                  <span class="history-card-duration">0:32</span>
+                </div>
+                <div class="history-card-text">Schedule the team standup for Monday morning and send calendar invites to...</div>
+              </div>
+            </div>
+
+            <div class="history-card" onclick="loadHistory(1)">
+              <div class="history-card-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8890A4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                </svg>
+              </div>
+              <div class="history-card-body">
+                <div class="history-card-meta">
+                  <span class="history-card-time">Today, 10:05 AM</span>
+                  <span class="history-card-duration">0:18</span>
+                </div>
+                <div class="history-card-text">Remind me to pick up the dry cleaning and stop by the pharmacy on the way home...</div>
+              </div>
+            </div>
+
+            <div class="history-card" onclick="loadHistory(2)">
+              <div class="history-card-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8890A4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                </svg>
+              </div>
+              <div class="history-card-body">
+                <div class="history-card-meta">
+                  <span class="history-card-time">Yesterday, 6:47 PM</span>
+                  <span class="history-card-duration">1:04</span>
+                </div>
+                <div class="history-card-text">The product roadmap for Q3 should focus on three key areas: performance, onboarding...</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Swipe hint -->
+          <div class="swipe-hint">
+            <span class="swipe-hint-text">Swipe to delete</span>
+            <svg class="swipe-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Spacer -->
+        <div style="height: 16px; flex-shrink:0;"></div>
+
+      </div><!-- /scroll-content -->
+
+      <!-- Tab Bar -->
+      <div class="tab-bar">
+        <div class="tab-item active" onclick="switchTab(this, 'Home')">
+          <div class="tab-icon" style="position:relative;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+            </svg>
+            <div class="tab-indicator"></div>
+          </div>
+          <span class="tab-label">Home</span>
+        </div>
+        <div class="tab-item" onclick="switchTab(this, 'History')">
+          <div class="tab-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <span class="tab-label">History</span>
+        </div>
+        <div class="tab-item" onclick="switchTab(this, 'Settings')">
+          <div class="tab-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </div>
+          <span class="tab-label">Settings</span>
+        </div>
+        <div class="tab-item" onclick="switchTab(this, 'About')">
+          <div class="tab-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <span class="tab-label">About</span>
+        </div>
+      </div><!-- /tab-bar -->
+
+    </div><!-- /phone-screen -->
+  </div><!-- /phone-frame -->
+
+  <script>
+    /* ─────────────────────────────────────────
+       State
+    ───────────────────────────────────────── */
+    let isRecording = false;
+    let durationInterval = null;
+    let durationSeconds = 0;
+    let typewriterTimeout = null;
+    let toastTimeout = null;
+
+    const DEMO_TEXT = "The quick brown fox jumps over the lazy dog. Today we need to discuss the quarterly review and prepare the presentation for Friday\u2019s all-hands meeting.";
+
+    const HISTORY_TEXTS = [
+      "Schedule the team standup for Monday morning and send calendar invites to everyone on the product team. Include a short agenda so people can prepare.",
+      "Remind me to pick up the dry cleaning and stop by the pharmacy on the way home. Also call mom before 7 PM.",
+      "The product roadmap for Q3 should focus on three key areas: performance improvements, onboarding flow redesign, and mobile parity with the desktop app."
+    ];
+
+    /* ─────────────────────────────────────────
+       Clock
+    ───────────────────────────────────────── */
+    function updateClock() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes().toString().padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const hour = (h % 12) || 12;
+      document.getElementById('statusTime').textContent = `${hour}:${m}`;
+    }
+    updateClock();
+    setInterval(updateClock, 10000);
+
+    /* ─────────────────────────────────────────
+       Typewriter Effect
+    ───────────────────────────────────────── */
+    function typewriter(text, targetId, speed = 28, onDone) {
+      const el = document.getElementById(targetId);
+      el.innerHTML = '';
+      clearTimeout(typewriterTimeout);
+
+      let i = 0;
+      const cursor = '<span class="cursor-blink"></span>';
+
+      function type() {
+        if (i <= text.length) {
+          el.innerHTML = text.slice(0, i) + cursor;
+          i++;
+          typewriterTimeout = setTimeout(type, speed);
+        } else {
+          el.innerHTML = text; // remove cursor at end
+          if (onDone) onDone();
+        }
+      }
+      type();
+    }
+
+    /* ─────────────────────────────────────────
+       Recording Toggle
+    ───────────────────────────────────────── */
+    function toggleRecording() {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    }
+
+    function startRecording() {
+      isRecording = true;
+      const btn    = document.getElementById('recordBtn');
+      const screen = document.getElementById('phoneScreen');
+      const badge  = document.getElementById('durationBadge');
+      const label  = document.getElementById('statusLabel');
+
+      btn.classList.add('recording');
+      screen.classList.add('recording');
+      badge.classList.add('visible');
+      label.textContent = 'Listening\u2026';
+
+      durationSeconds = 0;
+      clearInterval(durationInterval);
+      durationInterval = setInterval(() => {
+        durationSeconds++;
+        const m = Math.floor(durationSeconds / 60);
+        const s = (durationSeconds % 60).toString().padStart(2, '0');
+        document.getElementById('durationText').textContent = `${m}:${s}`;
+      }, 1000);
+
+      // Auto-stop after 4 seconds to demo the flow
+      setTimeout(() => {
+        if (isRecording) stopRecording();
+      }, 4000);
+    }
+
+    function stopRecording() {
+      isRecording = false;
+      const btn    = document.getElementById('recordBtn');
+      const screen = document.getElementById('phoneScreen');
+      const badge  = document.getElementById('durationBadge');
+      const label  = document.getElementById('statusLabel');
+
+      btn.classList.remove('recording');
+      screen.classList.remove('recording');
+      badge.classList.remove('visible');
+      label.textContent = 'Processing\u2026';
+
+      clearInterval(durationInterval);
+
+      // Simulate processing delay then typewriter
+      setTimeout(() => {
+        label.textContent = 'Hold to speak';
+        document.getElementById('transcriptionText').innerHTML = '';
+        typewriter(DEMO_TEXT, 'transcriptionText', 22);
+      }, 900);
+    }
+
+    /* ─────────────────────────────────────────
+       Actions
+    ───────────────────────────────────────── */
+    function copyText() {
+      const text = document.getElementById('transcriptionText').textContent;
+      if (!text.trim()) { showToast('Nothing to copy'); return; }
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard'));
+      } else {
+        showToast('Copied to clipboard');
+      }
+    }
+
+    function clearText() {
+      document.getElementById('transcriptionText').innerHTML = '';
+      showToast('Cleared');
+    }
+
+    function loadHistory(idx) {
+      const text = HISTORY_TEXTS[idx];
+      clearTimeout(typewriterTimeout);
+      typewriter(text, 'transcriptionText', 18);
+      showToast('Loaded from history');
+    }
+
+    /* ─────────────────────────────────────────
+       Tab Switching
+    ───────────────────────────────────────── */
+    function switchTab(el, name) {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      // Add indicator dot if not present
+      const icon = el.querySelector('.tab-icon');
+      if (!icon.querySelector('.tab-indicator')) {
+        const dot = document.createElement('div');
+        dot.className = 'tab-indicator';
+        icon.style.position = 'relative';
+        icon.appendChild(dot);
+      }
+      if (name !== 'Home') {
+        showToast(`${name} tab`);
+      }
+    }
+
+    /* ─────────────────────────────────────────
+       Toast
+    ───────────────────────────────────────── */
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('visible');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => toast.classList.remove('visible'), 1800);
+    }
+
+    /* ─────────────────────────────────────────
+       Init — run typewriter on load
+    ───────────────────────────────────────── */
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        typewriter(DEMO_TEXT, 'transcriptionText', 24);
+      }, 600);
+    });
+  </script>
+</body>
+</html>
