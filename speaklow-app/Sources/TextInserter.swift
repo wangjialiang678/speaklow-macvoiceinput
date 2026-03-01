@@ -168,41 +168,6 @@ class TextInserter {
         }
     }
 
-    // MARK: - Streaming Session (clipboard saved once, restored at end)
-
-    private static var streamingClipboard: [(NSPasteboard.PasteboardType, Data)]?
-
-    /// Save clipboard at the start of a streaming session (call once).
-    static func beginStreamingSession() {
-        streamingClipboard = saveClipboard()
-        viLog("TextInserter: clipboard saved for streaming session")
-    }
-
-    /// Paste a single sentence during streaming (no per-sentence clipboard save/restore).
-    static func insertSentence(_ text: String) -> InsertResult {
-        viLog("TextInserter.insertSentence() called, text='\(text.prefix(50))'")
-
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        Thread.sleep(forTimeInterval: 0.05)
-
-        let pasted = trySendPasteCommand()
-        viLog("TextInserter: sentence Cmd+V sent, result=\(pasted)")
-
-        return pasted ? .pastedViaClipboard : .copiedToClipboard
-    }
-
-    /// Restore clipboard after streaming session ends.
-    static func endStreamingSession() {
-        if let saved = streamingClipboard {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                restoreClipboard(saved)
-                viLog("TextInserter: clipboard restored after streaming session")
-            }
-            streamingClipboard = nil
-        }
-    }
-
     // MARK: - Paste via CGEvent
 
     private static func trySendPasteCommand() -> Bool {

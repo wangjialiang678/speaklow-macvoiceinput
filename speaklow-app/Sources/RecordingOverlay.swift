@@ -6,7 +6,6 @@ import AppKit
 class RecordingOverlayState: ObservableObject {
     @Published var phase: OverlayPhase = .recording
     @Published var audioLevel: Float = 0.0
-    @Published var partialText: String = ""
 }
 
 enum OverlayPhase: Equatable {
@@ -62,6 +61,10 @@ class RecordingOverlayManager {
     private var transcribingPanel: NSPanel?
     private var overlayState = RecordingOverlayState()
 
+    // Transcription preview panel (floating near bottom-center)
+    private var previewPanel: NSPanel?
+    private var previewState = TranscriptionPreviewState()
+
     /// Whether the main screen has a camera housing (notch).
     private var screenHasNotch: Bool {
         guard let screen = NSScreen.main else { return false }
@@ -100,10 +103,6 @@ class RecordingOverlayManager {
         DispatchQueue.main.async { self.overlayState.audioLevel = level }
     }
 
-    func updatePartialText(_ text: String) {
-        DispatchQueue.main.async { self.overlayState.partialText = text }
-    }
-
     func showTranscribing() {
         DispatchQueue.main.async { self._showTranscribing() }
     }
@@ -124,6 +123,27 @@ class RecordingOverlayManager {
         DispatchQueue.main.async { self._showError(title: title, suggestion: suggestion) }
     }
 
+    // MARK: - Preview Panel API
+
+    func showPreviewPanel() {
+        DispatchQueue.main.async { self._showPreviewPanel() }
+    }
+
+    func updatePreviewText(_ text: String) {
+        DispatchQueue.main.async {
+            // Auto-show panel on first non-empty text
+            if self.previewPanel == nil && !text.isEmpty {
+                self._showPreviewPanel()
+            }
+            self.previewState.displayText = text
+            self._resizePreviewPanel()
+        }
+    }
+
+    func dismissPreviewPanel() {
+        DispatchQueue.main.async { self._dismissPreviewPanel() }
+    }
+
     /// Height of the notch area (menu bar inset) that the panel extends into.
     private var notchOverlap: CGFloat {
         guard let screen = NSScreen.main else { return 0 }
@@ -132,8 +152,8 @@ class RecordingOverlayManager {
 
     private func _showOverlayPanel() {
         let hasNotch = screenHasNotch
-        let panelWidth: CGFloat = hasNotch ? max(notchWidth, 180) : 180
-        let contentHeight: CGFloat = 70
+        let panelWidth: CGFloat = hasNotch ? max(notchWidth, 150) : 150
+        let contentHeight: CGFloat = 50
         // On notch screens, extend the panel up into the menu bar to connect with the notch
         let overlap = hasNotch ? notchOverlap : 0
         let panelHeight = contentHeight + overlap
@@ -328,10 +348,136 @@ class RecordingOverlayManager {
             panel.orderOut(nil)
             errorPanel = nil
         }
+        _dismissPreviewPanel()
     }
 
     private func panelX(_ screen: NSScreen, width: CGFloat) -> CGFloat {
         screen.frame.midX - width / 2
+    }
+
+    // MARK: - Preview Panel Private
+
+    private let previewPanelWidth: CGFloat = 520
+    private let previewFont = NSFont.systemFont(ofSize: 14)
+    private let previewLineSpacing: CGFloat = 4
+    private let previewHPad: CGFloat = 28  // 14 × 2
+    private let previewVPad: CGFloat = 20  // 10 × 2
+    private let previewMaxLines: CGFloat = 10
+
+    private var previewSingleLineHeight: CGFloat {
+        let font = previewFont
+        return ceil(font.ascender - font.descender + font.leading + previewLineSpacing)
+    }
+
+    private func _showPreviewPanel() {
+        guard previewPanel == nil else { return }
+
+        previewState.displayText = ""
+        let h = previewSingleLineHeight + previewVPad
+
+        let panel = makeOverlayPanel(width: previewPanelWidth, height: h)
+
+        let view = TranscriptionPreviewView(state: previewState)
+        let hosting = NSHostingView(rootView: view)
+        hosting.frame = NSRect(x: 0, y: 0, width: previewPanelWidth, height: h)
+        hosting.autoresizingMask = [.width, .height]
+        panel.contentView = hosting
+
+        if let screen = NSScreen.main {
+            let x = screen.frame.midX - previewPanelWidth / 2
+            let bottomY = screen.visibleFrame.minY + screen.visibleFrame.height * 0.15
+            panel.setFrame(NSRect(x: x, y: bottomY, width: previewPanelWidth, height: h), display: true)
+        }
+
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            panel.animator().alphaValue = 1
+        }
+
+        self.previewPanel = panel
+    }
+
+    private func _resizePreviewPanel() {
+        guard let panel = previewPanel, let screen = NSScreen.main else { return }
+
+        let text = previewState.displayText
+        guard !text.isEmpty else { return }
+
+        let textWidth = previewPanelWidth - previewHPad
+        let style = NSMutableParagraphStyle()
+        style.lineSpacing = previewLineSpacing
+
+        let attrStr = NSAttributedString(
+            string: text,
+            attributes: [.font: previewFont, .paragraphStyle: style]
+        )
+        let textRect = attrStr.boundingRect(
+            with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+
+        let minH = previewSingleLineHeight + previewVPad
+        let maxH = previewSingleLineHeight * previewMaxLines + previewVPad
+        let targetH = min(max(ceil(textRect.height) + previewVPad, minH), maxH)
+
+        let x = screen.frame.midX - previewPanelWidth / 2
+        let bottomY = screen.visibleFrame.minY + screen.visibleFrame.height * 0.15
+        let newFrame = NSRect(x: x, y: bottomY, width: previewPanelWidth, height: targetH)
+
+        if abs(panel.frame.height - targetH) > 2 {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.1
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                panel.animator().setFrame(newFrame, display: true)
+            }
+        }
+    }
+
+    private func _dismissPreviewPanel() {
+        guard let panel = previewPanel else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.2
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            panel.orderOut(nil)
+            self.previewPanel = nil
+            self.previewState.displayText = ""
+        })
+    }
+}
+
+// MARK: - Transcription Preview
+
+class TranscriptionPreviewState: ObservableObject {
+    @Published var displayText: String = ""
+}
+
+struct TranscriptionPreviewView: View {
+    @ObservedObject var state: TranscriptionPreviewState
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                Text(state.displayText)
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
+                    .lineSpacing(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .id("previewEnd")
+            }
+            .onChange(of: state.displayText) { _ in
+                proxy.scrollTo("previewEnd", anchor: .bottom)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(white: 0.12, opacity: 0.88))
+        )
     }
 }
 
@@ -416,30 +562,17 @@ struct RecordingOverlayView: View {
     @ObservedObject var state: RecordingOverlayState
 
     var body: some View {
-        VStack(spacing: 2) {
-            Group {
-                switch state.phase {
-                case .initializing:
-                    InitializingDotsView()
-                        .transition(.opacity)
-                default:
-                    WaveformView(audioLevel: state.audioLevel)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.easeInOut(duration: 0.2), value: state.phase)
-
-            if !state.partialText.isEmpty {
-                Text(state.partialText)
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.85))
-                    .lineLimit(2)
-                    .truncationMode(.head)
-                    .padding(.horizontal, 8)
+        Group {
+            switch state.phase {
+            case .initializing:
+                InitializingDotsView()
                     .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.15), value: state.partialText)
+            default:
+                WaveformView(audioLevel: state.audioLevel)
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: state.phase)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

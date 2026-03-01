@@ -356,7 +356,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         // Start streaming connection to bridge
         streaming.start()
-        TextInserter.beginStreamingSession()
+        // Preview panel auto-shows on first partial text
         viLog("Streaming mode: initialized")
 
         let deviceUID = selectedMicrophoneID
@@ -683,17 +683,15 @@ extension AppState: StreamingTranscriptionDelegate {
 
     func streamingDidReceivePartial(text: String) {
         viLog("Streaming partial: \(text.prefix(40))")
-        overlayManager.updatePartialText(text)
+        let display = committedSentences.joined() + text
+        overlayManager.updatePreviewText(display)
     }
 
     func streamingDidReceiveSentence(text: String) {
         viLog("Streaming sentence_end: '\(text.prefix(40))'")
         committedSentences.append(text)
-        overlayManager.updatePartialText("")
-
-        // Immediately paste this sentence into the target app
-        let result = TextInserter.insertSentence(text)
-        viLog("Streaming: sentence paste result=\(result)")
+        let display = committedSentences.joined()
+        overlayManager.updatePreviewText(display)
     }
 
     func streamingDidFinish() {
@@ -703,7 +701,6 @@ extension AppState: StreamingTranscriptionDelegate {
         streamingService?.disconnect()
         streamingService = nil
         audioRecorder.onStreamingAudioChunk = nil
-        TextInserter.endStreamingSession()
 
         transcribingIndicatorTask?.cancel()
         transcribingIndicatorTask = nil
@@ -712,11 +709,26 @@ extension AppState: StreamingTranscriptionDelegate {
         if fullText.isEmpty {
             statusText = "未检测到语音"
             NSSound(named: "Basso")?.play()
+            overlayManager.dismissPreviewPanel()
             overlayManager.showError(title: "未检测到语音", suggestion: "请靠近麦克风说话")
         } else {
             lastTranscript = fullText
-            statusText = "已插入: \(fullText.prefix(20))..."
+
+            // One-shot paste all accumulated text
+            viLog("Streaming: one-shot paste, length=\(fullText.count)")
+            let result = TextInserter.insert(fullText)
+            viLog("Streaming: paste result=\(result)")
+
+            switch result {
+            case .insertedViaAX:
+                statusText = "已插入: \(fullText.prefix(20))..."
+            case .pastedViaClipboard:
+                statusText = "已粘贴: \(fullText.prefix(20))..."
+            case .copiedToClipboard:
+                statusText = "已复制到剪贴板（请手动粘贴）"
+            }
             NSSound(named: "Glass")?.play()
+            overlayManager.dismissPreviewPanel()
             overlayManager.showDone()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                 self.overlayManager.dismiss()
@@ -727,7 +739,7 @@ extension AppState: StreamingTranscriptionDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             if self.statusText.hasPrefix("已插入") || self.statusText.hasPrefix("已粘贴") ||
-               self.statusText == "未检测到语音" {
+               self.statusText.hasPrefix("已复制") || self.statusText == "未检测到语音" {
                 self.statusText = "Ready"
             }
         }
@@ -740,7 +752,7 @@ extension AppState: StreamingTranscriptionDelegate {
         streamingService?.disconnect()
         streamingService = nil
         audioRecorder.onStreamingAudioChunk = nil
-        TextInserter.endStreamingSession()
+        overlayManager.dismissPreviewPanel()
 
         // Don't stop recording — audio continues writing to file for batch fallback.
         // When user releases hotkey, handleHotkeyUp will call stopAndTranscribe().

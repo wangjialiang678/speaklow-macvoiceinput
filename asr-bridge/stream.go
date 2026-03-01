@@ -89,10 +89,12 @@ func streamHandler(apiKey string) http.HandlerFunc {
 		defer dashConn.Close()
 		log.Printf("[stream] DashScope connected, taskID=%s", taskID)
 
-		// Set streaming timeout
+		// Set streaming timeout (read + write) for both connections
 		deadline := time.Now().Add(streamTimeout)
 		dashConn.SetReadDeadline(deadline)
+		dashConn.SetWriteDeadline(deadline)
 		clientConn.SetReadDeadline(deadline)
+		clientConn.SetWriteDeadline(deadline)
 
 		// 3. Reply "started" to client
 		if err := sendBridgeMsg(clientConn, bridgeMsg{Type: "started"}); err != nil {
