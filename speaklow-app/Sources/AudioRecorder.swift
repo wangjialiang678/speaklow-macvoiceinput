@@ -141,8 +141,16 @@ class AudioRecorder: NSObject, ObservableObject {
     var onRecordingReady: (() -> Void)?
     /// Called when no non-silent audio is detected within the timeout period.
     var onSilenceTimeout: (() -> Void)?
+    /// Called on the audio thread with 16kHz 16-bit mono PCM data for streaming.
+    /// Each callback delivers exactly 3200 bytes (100ms of audio).
+    var onStreamingAudioChunk: ((Data) -> Void)?
     private var readyFired = false
     private var silenceTimer: DispatchSourceTimer?
+    // Streaming PCM conversion
+    private var streamingConverter: AVAudioConverter?
+    private var streamingOutputFormat: AVAudioFormat?
+    private var streamingBuffer = Data()
+    private let streamingChunkSize = 3200 // 100ms at 16kHz 16-bit mono
 
     func startRecording(deviceUID: String? = nil) throws {
         let t0 = CFAbsoluteTimeGetCurrent()
@@ -201,6 +209,14 @@ class AudioRecorder: NSObject, ObservableObject {
 
             storedInputFormat = inputFormat
 
+            // Set up streaming converter (native format → 16kHz mono int16)
+            if let outFmt = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true) {
+                self.streamingOutputFormat = outFmt
+                self.streamingConverter = AVAudioConverter(from: inputFormat, to: outFmt)
+                self.streamingBuffer = Data()
+                os_log(.info, log: recordingLog, "streaming converter: %.0fHz %dch → 16kHz mono", inputFormat.sampleRate, inputFormat.channelCount)
+            }
+
             // Install tap — checks isRecording and audioFile dynamically
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
                 guard let self, self._recording.withLock({ $0 }) else { return }
@@ -241,6 +257,32 @@ class AudioRecorder: NSObject, ObservableObject {
                         }
                     }
                 }
+
+                // Streaming: convert to 16kHz mono PCM and deliver in 3200-byte chunks
+                if let converter = self.streamingConverter,
+                   let outFmt = self.streamingOutputFormat,
+                   let onChunk = self.onStreamingAudioChunk {
+                    let ratio = outFmt.sampleRate / inputFormat.sampleRate
+                    let outFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+                    if let outBuf = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: outFrameCount) {
+                        var convError: NSError?
+                        let status = converter.convert(to: outBuf, error: &convError) { _, outStatus in
+                            outStatus.pointee = .haveData
+                            return buffer
+                        }
+                        if status == .haveData, let int16Ptr = outBuf.int16ChannelData {
+                            let byteCount = Int(outBuf.frameLength) * 2
+                            let pcmData = Data(bytes: int16Ptr[0], count: byteCount)
+                            self.streamingBuffer.append(pcmData)
+                            while self.streamingBuffer.count >= self.streamingChunkSize {
+                                let chunk = self.streamingBuffer.prefix(self.streamingChunkSize)
+                                onChunk(Data(chunk))
+                                self.streamingBuffer.removeFirst(self.streamingChunkSize)
+                            }
+                        }
+                    }
+                }
+
                 self.computeAudioLevel(from: buffer)
             }
             os_log(.info, log: recordingLog, "tap installed: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
@@ -323,6 +365,12 @@ class AudioRecorder: NSObject, ObservableObject {
         smoothedLevel = 0.0
         DispatchQueue.main.async { self.audioLevel = 0.0 }
 
+        // Flush remaining streaming buffer
+        if let onChunk = onStreamingAudioChunk, !streamingBuffer.isEmpty {
+            onChunk(streamingBuffer)
+            streamingBuffer.removeAll()
+        }
+
         // Stop engine so mic indicator goes away — keep engine object for fast restart
         audioEngine?.stop()
         os_log(.info, log: recordingLog, "engine stopped (mic indicator off)")
@@ -381,6 +429,10 @@ class AudioRecorder: NSObject, ObservableObject {
         currentDeviceUID = nil
         isRecording = false
         smoothedLevel = 0.0
+        streamingConverter = nil
+        streamingOutputFormat = nil
+        streamingBuffer.removeAll()
+        onStreamingAudioChunk = nil
         DispatchQueue.main.async { self.audioLevel = 0.0 }
         os_log(.info, log: recordingLog, "Engine invalidated — will rebuild on next recording")
     }

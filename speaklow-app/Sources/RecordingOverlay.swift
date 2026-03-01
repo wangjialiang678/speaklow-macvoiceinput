@@ -6,6 +6,7 @@ import AppKit
 class RecordingOverlayState: ObservableObject {
     @Published var phase: OverlayPhase = .recording
     @Published var audioLevel: Float = 0.0
+    @Published var partialText: String = ""
 }
 
 enum OverlayPhase: Equatable {
@@ -99,6 +100,10 @@ class RecordingOverlayManager {
         DispatchQueue.main.async { self.overlayState.audioLevel = level }
     }
 
+    func updatePartialText(_ text: String) {
+        DispatchQueue.main.async { self.overlayState.partialText = text }
+    }
+
     func showTranscribing() {
         DispatchQueue.main.async { self._showTranscribing() }
     }
@@ -127,8 +132,8 @@ class RecordingOverlayManager {
 
     private func _showOverlayPanel() {
         let hasNotch = screenHasNotch
-        let panelWidth: CGFloat = hasNotch ? max(notchWidth, 120) : 120
-        let contentHeight: CGFloat = 40
+        let panelWidth: CGFloat = hasNotch ? max(notchWidth, 180) : 180
+        let contentHeight: CGFloat = 70
         // On notch screens, extend the panel up into the menu bar to connect with the notch
         let overlap = hasNotch ? notchOverlap : 0
         let panelHeight = contentHeight + overlap
@@ -411,17 +416,30 @@ struct RecordingOverlayView: View {
     @ObservedObject var state: RecordingOverlayState
 
     var body: some View {
-        Group {
-            switch state.phase {
-            case .initializing:
-                InitializingDotsView()
+        VStack(spacing: 2) {
+            Group {
+                switch state.phase {
+                case .initializing:
+                    InitializingDotsView()
+                        .transition(.opacity)
+                default:
+                    WaveformView(audioLevel: state.audioLevel)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: state.phase)
+
+            if !state.partialText.isEmpty {
+                Text(state.partialText)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.85))
+                    .lineLimit(2)
+                    .truncationMode(.head)
+                    .padding(.horizontal, 8)
                     .transition(.opacity)
-            default:
-                WaveformView(audioLevel: state.audioLevel)
-                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.15), value: state.partialText)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: state.phase)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

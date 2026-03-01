@@ -68,6 +68,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var transcribingIndicatorTask: Task<Void, Never>?
     private var audioDeviceListenerBlock: AudioObjectPropertyListenerBlock?
 
+    // Streaming state
+    private var streamingService: StreamingTranscriptionService?
+    private var isStreaming = false
+    private var committedSentences: [String] = []
+
     init() {
         let hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
         let selectedHotkey = HotkeyOption(rawValue: UserDefaults.standard.string(forKey: "hotkey_option") ?? "rightOption") ?? .rightOption
@@ -217,9 +222,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func handleHotkeyUp() {
-        viLog("handleHotkeyUp() fired, isRecording=\(isRecording)")
+        viLog("handleHotkeyUp() fired, isRecording=\(isRecording), isStreaming=\(isStreaming)")
         guard isRecording else { return }
-        stopAndTranscribe()
+
+        if isStreaming {
+            stopStreamingRecording()
+        } else {
+            stopAndTranscribe()
+        }
     }
 
     func toggleRecording() {
@@ -332,6 +342,23 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
         initTimer.resume()
 
+        // Set up streaming
+        let streaming = StreamingTranscriptionService()
+        streaming.delegate = self
+        self.streamingService = streaming
+        self.isStreaming = true
+        self.committedSentences = []
+
+        // Set up streaming audio callback
+        audioRecorder.onStreamingAudioChunk = { [weak self] chunk in
+            self?.streamingService?.sendAudioChunk(chunk)
+        }
+
+        // Start streaming connection to bridge
+        streaming.start()
+        TextInserter.beginStreamingSession()
+        viLog("Streaming mode: initialized")
+
         let deviceUID = selectedMicrophoneID
         audioRecorder.onRecordingReady = { [weak self] in
             DispatchQueue.main.async {
@@ -409,6 +436,27 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
 
         return "Failed to start recording: \(error.localizedDescription)"
+    }
+
+    // MARK: - Streaming Recording
+
+    private func stopStreamingRecording() {
+        viLog("stopStreamingRecording() entered")
+        audioLevelCancellable?.cancel()
+        audioLevelCancellable = nil
+
+        // Stop recording (flushes remaining audio buffer)
+        _ = audioRecorder.stopRecording()
+        isRecording = false
+
+        // Tell streaming service we're done sending audio
+        streamingService?.stop()
+
+        // Show finalizing indicator
+        overlayManager.slideUpToNotch { [weak self] in
+            self?.overlayManager.showTranscribing()
+        }
+        statusText = "正在完成..."
     }
 
     // MARK: - Transcription
@@ -623,5 +671,78 @@ final class AppState: ObservableObject, @unchecked Sendable {
         if response == .alertFirstButtonReturn {
             openAccessibilitySettings()
         }
+    }
+}
+
+// MARK: - StreamingTranscriptionDelegate
+
+extension AppState: StreamingTranscriptionDelegate {
+    func streamingDidStart() {
+        viLog("Streaming: bridge connected, ready to receive audio")
+    }
+
+    func streamingDidReceivePartial(text: String) {
+        viLog("Streaming partial: \(text.prefix(40))")
+        overlayManager.updatePartialText(text)
+    }
+
+    func streamingDidReceiveSentence(text: String) {
+        viLog("Streaming sentence_end: '\(text.prefix(40))'")
+        committedSentences.append(text)
+        overlayManager.updatePartialText("")
+
+        // Immediately paste this sentence into the target app
+        let result = TextInserter.insertSentence(text)
+        viLog("Streaming: sentence paste result=\(result)")
+    }
+
+    func streamingDidFinish() {
+        viLog("Streaming: finished")
+
+        isStreaming = false
+        streamingService?.disconnect()
+        streamingService = nil
+        audioRecorder.onStreamingAudioChunk = nil
+        TextInserter.endStreamingSession()
+
+        transcribingIndicatorTask?.cancel()
+        transcribingIndicatorTask = nil
+
+        let fullText = committedSentences.joined()
+        if fullText.isEmpty {
+            statusText = "未检测到语音"
+            NSSound(named: "Basso")?.play()
+            overlayManager.showError(title: "未检测到语音", suggestion: "请靠近麦克风说话")
+        } else {
+            lastTranscript = fullText
+            statusText = "已插入: \(fullText.prefix(20))..."
+            NSSound(named: "Glass")?.play()
+            overlayManager.showDone()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                self.overlayManager.dismiss()
+            }
+        }
+
+        audioRecorder.cleanup()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            if self.statusText.hasPrefix("已插入") || self.statusText.hasPrefix("已粘贴") ||
+               self.statusText == "未检测到语音" {
+                self.statusText = "Ready"
+            }
+        }
+    }
+
+    func streamingDidFail(error: Error) {
+        viLog("Streaming FAILED: \(error.localizedDescription), falling back to batch mode")
+
+        isStreaming = false
+        streamingService?.disconnect()
+        streamingService = nil
+        audioRecorder.onStreamingAudioChunk = nil
+        TextInserter.endStreamingSession()
+
+        // Don't stop recording — audio continues writing to file for batch fallback.
+        // When user releases hotkey, handleHotkeyUp will call stopAndTranscribe().
     }
 }
