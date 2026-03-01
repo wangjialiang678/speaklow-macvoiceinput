@@ -65,16 +65,16 @@ AI 问了我两个问题：
 AI 先写了 PRD（产品需求文档）和技术设计文档，然后**同时启动两个子代理**：
 
 - **子代理 1**：写 Go ASR Bridge（本地中间服务）
-- **子代理 2**：改造 FreeFlow 成 VoiceInput（Swift 前端）
+- **子代理 2**：改造 FreeFlow 成 SpeakLow（Swift 前端）
 
-两个子代理独立工作，互不等待。大约几分钟后两边都完成了，编译成功，生成了一个可运行的 `VoiceInput.app`。
+两个子代理独立工作，互不等待。大约几分钟后两边都完成了，编译成功，生成了一个可运行的 `SpeakLow.app`。
 
 ### 架构总览
 
 ```
-VoiceInput.app
+SpeakLow.app
 ├── Contents/MacOS/
-│   ├── VoiceInput      ← Swift 主程序（菜单栏 + 录音 + 浮窗）
+│   ├── SpeakLow      ← Swift 主程序（菜单栏 + 录音 + 浮窗）
 │   └── asr-bridge       ← Go 中间服务（转发到阿里云）
 ├── Contents/Info.plist
 └── Contents/Resources/AppIcon.icns
@@ -94,7 +94,7 @@ VoiceInput.app
 
 **原因**：macOS 的统一日志系统（os_log）对**未签名的应用**会过滤掉日志。我们的应用是用 `swiftc` 直接编译的，没有代码签名。
 
-**解决**：放弃 os_log，自己写了一个文件日志函数 `viLog()`，把日志写到 `~/Library/Logs/VoiceInput.log`。
+**解决**：放弃 os_log，自己写了一个文件日志函数 `viLog()`，把日志写到 `~/Library/Logs/SpeakLow.log`。
 
 **教训**：不要假设工具能正常工作，先验证日志确实能看到。
 
@@ -208,7 +208,7 @@ mac-typless-cc/
 │   ├── main.go          ← HTTP 路由
 │   ├── transcribe.go    ← FunASR WebSocket 客户端
 │   └── env.go           ← .env 文件加载
-├── voice-input-app/     ← Swift 前端
+├── speaklow-app/     ← Swift 前端
 │   ├── Sources/         ← 15 个 Swift 源文件
 │   ├── Info.plist
 │   └── Makefile
@@ -268,4 +268,4 @@ mac-typless-cc/
 
 ---
 
-*这篇教程的每一个字，都是用 VoiceInput 语音输入写的。嗯，开玩笑的，但以后可以是真的。*
+*这篇教程的每一个字，都是用 SpeakLow 语音输入写的。嗯，开玩笑的，但以后可以是真的。*

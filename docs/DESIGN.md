@@ -1,4 +1,4 @@
-# VoiceInput 技术设计文档
+# SpeakLow 技术设计文档
 
 ## 1. ASR Bridge（Go）
 
@@ -74,13 +74,13 @@ asr-bridge/
 
 ---
 
-## 2. Voice Input App（Swift）
+## 2. SpeakLow App（Swift）
 
 ### 2.1 基于 FreeFlow 的修改清单
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| App.swift | 修改 | 改名 VoiceInput，更新 bundle ID |
+| App.swift | 修改 | 改名 SpeakLow，更新 bundle ID |
 | AppState.swift | 大改 | 移除 Groq/PostProcessing/Context，加入 AX 文字插入 |
 | AppDelegate.swift | 修改 | 移除 UpdateManager，加入 Go 进程管理 |
 | TranscriptionService.swift | 重写 | 改为调用本地 ASR Bridge |
@@ -148,14 +148,14 @@ class ASRBridgeManager {
 
 ### 2.4 .env 文件搜索顺序
 
-1. `~/.config/voiceinput/.env`
+1. `~/.config/speaklow/.env`
 2. App Bundle 所在目录的 `.env`
 3. 环境变量 `DASHSCOPE_API_KEY`
 
 ### 2.5 文件结构
 
 ```
-voice-input-app/
+speaklow-app/
   Sources/
     App.swift
     AppDelegate.swift
@@ -175,7 +175,7 @@ voice-input-app/
   Resources/
     AppIcon-Source.png
   Info.plist
-  VoiceInput.entitlements
+  SpeakLow.entitlements
   Makefile
 ```
 
@@ -195,7 +195,7 @@ lipo -create -output asr-bridge asr-bridge-arm64 asr-bridge-amd64
 ### 3.2 Swift 应用
 
 ```bash
-cd voice-input-app
+cd speaklow-app
 make all  # 编译 Swift + 打包 .app
 # Makefile 会自动将 asr-bridge 二进制复制到 .app/Contents/MacOS/
 ```
@@ -203,5 +203,5 @@ make all  # 编译 Swift + 打包 .app
 ### 3.3 最终产物
 
 ```
-build/VoiceInput.app  # 可直接双击运行
+build/SpeakLow.app  # 可直接双击运行
 ```

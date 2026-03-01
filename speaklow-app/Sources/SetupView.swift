@@ -85,7 +85,7 @@ struct SetupView: View {
                 .frame(width: 128, height: 128)
 
             VStack(spacing: 8) {
-                Text("Welcome to VoiceInput")
+                Text("Welcome to SpeakLow")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
 
                 Text("Dictate text anywhere on your Mac.\nHold a key to record, release to transcribe.")
@@ -115,7 +115,7 @@ struct SetupView: View {
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("VoiceInput needs access to your microphone to record audio for transcription.")
+            Text("SpeakLow needs access to your microphone to record audio for transcription.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -155,7 +155,7 @@ struct SetupView: View {
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("VoiceInput needs Accessibility access to insert transcribed text at your cursor position.")
+            Text("SpeakLow needs Accessibility access to insert transcribed text at your cursor position.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -208,7 +208,7 @@ struct SetupView: View {
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("VoiceInput lives in your menu bar.")
+            Text("SpeakLow lives in your menu bar.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 

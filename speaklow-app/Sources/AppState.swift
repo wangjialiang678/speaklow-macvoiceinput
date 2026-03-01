@@ -61,6 +61,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
     let audioRecorder = AudioRecorder()
     let hotkeyManager = HotkeyManager()
     let overlayManager = RecordingOverlayManager()
+    /// Set by AppDelegate after init; used for auto-restart on health check failure.
+    var bridgeManager: ASRBridgeManager?
     private var accessibilityTimer: Timer?
     private var audioLevelCancellable: AnyCancellable?
     private var transcribingIndicatorTask: Task<Void, Never>?
@@ -108,7 +110,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     static func audioStorageDirectory() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "VoiceInput"
+        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "SpeakLow"
         let audioDir = appSupport.appendingPathComponent("\(appName)/audio", isDirectory: true)
         if !FileManager.default.fileExists(atPath: audioDir.path) {
             try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
@@ -280,6 +282,44 @@ final class AppState: ObservableObject, @unchecked Sendable {
         isRecording = true
         statusText = "Starting..."
 
+        // Pre-flight: check if asr-bridge is reachable; auto-restart if not
+        let healthService = TranscriptionService()
+        Task {
+            var bridgeHealthy = await healthService.checkHealth()
+
+            if !bridgeHealthy, let bridge = self.bridgeManager {
+                viLog("Pre-flight: bridge unhealthy, attempting auto-restart...")
+                await MainActor.run {
+                    self.statusText = "正在恢复服务..."
+                    self.overlayManager.showInitializing()
+                }
+                bridgeHealthy = await bridge.ensureRunning()
+                if bridgeHealthy {
+                    viLog("Pre-flight: bridge auto-restarted successfully")
+                } else {
+                    viLog("Pre-flight: bridge auto-restart failed")
+                }
+            }
+
+            if !bridgeHealthy {
+                viLog("Pre-flight: asr-bridge health check failed")
+                await MainActor.run {
+                    self.isRecording = false
+                    self.statusText = "服务异常"
+                    self.errorMessage = "语音服务未启动"
+                    NSSound(named: "Basso")?.play()
+                    self.overlayManager.showError(
+                        title: "语音服务未启动",
+                        suggestion: "请重启 SpeakLow"
+                    )
+                }
+                return
+            }
+            await MainActor.run { self._beginRecordingAfterHealthCheck() }
+        }
+    }
+
+    private func _beginRecordingAfterHealthCheck() {
         // Show initializing dots only if engine takes longer than 0.5s to start
         var overlayShown = false
         let initTimer = DispatchSource.makeTimerSource(queue: .main)
@@ -306,6 +346,25 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 }
                 overlayShown = true
                 NSSound(named: "Tink")?.play()
+            }
+        }
+
+        audioRecorder.onSilenceTimeout = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                viLog("Silence timeout — stopping recording and showing error")
+                initTimer.cancel()
+                self.audioLevelCancellable?.cancel()
+                self.audioLevelCancellable = nil
+                self.isRecording = false
+                self.statusText = "麦克风无响应"
+                self.errorMessage = "麦克风无响应"
+                self.audioRecorder.cleanup()
+                NSSound(named: "Basso")?.play()
+                self.overlayManager.showError(
+                    title: "麦克风无响应",
+                    suggestion: "请检查麦克风或重启应用"
+                )
             }
         }
 
@@ -414,9 +473,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
                     if trimmed.isEmpty {
                         viLog("Empty transcription — nothing to insert")
-                        self.statusText = "Nothing to transcribe"
+                        self.statusText = "未检测到语音"
                         NSSound(named: "Basso")?.play()
-                        self.overlayManager.dismiss()
+                        self.overlayManager.showError(
+                            title: "未检测到语音",
+                            suggestion: "请靠近麦克风说话"
+                        )
                     } else {
                         self.lastTranscript = trimmed
 
@@ -458,22 +520,65 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 }
             } catch {
                 viLog("Transcription FAILED: \(error.localizedDescription)")
+
+                // If it looks like bridge died, try to auto-restart for next time
+                let desc = error.localizedDescription.lowercased()
+                if desc.contains("18089") || desc.contains("localhost") || desc.contains("connection refused") {
+                    if let bridge = self.bridgeManager {
+                        viLog("Bridge appears down — attempting auto-restart for next recording...")
+                        let restarted = await bridge.ensureRunning()
+                        viLog("Bridge auto-restart result: \(restarted)")
+                    }
+                }
+
+                let (errTitle, errSuggestion) = self.userFriendlyTranscriptionError(error)
                 await MainActor.run {
                     self.transcribingIndicatorTask?.cancel()
                     self.transcribingIndicatorTask = nil
                     self.errorMessage = error.localizedDescription
                     self.isTranscribing = false
-                    self.statusText = "识别失败: \(error.localizedDescription.prefix(40))"
+                    self.statusText = errTitle
                     NSSound(named: "Basso")?.play()
-                    self.showNotification(
-                        title: "语音识别失败",
-                        body: error.localizedDescription
+                    self.overlayManager.showError(
+                        title: errTitle,
+                        suggestion: errSuggestion
                     )
                     self.audioRecorder.cleanup()
-                    self.overlayManager.dismiss()
                 }
             }
         }
+    }
+
+    private func userFriendlyTranscriptionError(_ error: Error) -> (title: String, suggestion: String) {
+        let desc = error.localizedDescription.lowercased()
+
+        if let txErr = error as? TranscriptionError {
+            switch txErr {
+            case .transcriptionTimedOut:
+                return ("网络连接超时", "请检查网络连接")
+            case .submissionFailed(let msg):
+                if msg.lowercased().contains("network") || msg.lowercased().contains("connection") {
+                    return ("网络连接失败", "请检查网络连接")
+                }
+                if msg.contains("18089") || msg.contains("localhost") {
+                    return ("语音服务未响应", "请重启 SpeakLow")
+                }
+                return ("识别服务异常", "请稍后重试")
+            case .transcriptionFailed:
+                return ("识别服务异常", "请稍后重试")
+            case .pollFailed:
+                return ("识别结果异常", "请稍后重试")
+            }
+        }
+
+        if desc.contains("timed out") || desc.contains("timeout") {
+            return ("网络连接超时", "请检查网络连接")
+        }
+        if desc.contains("network") || desc.contains("connection") {
+            return ("网络连接失败", "请检查网络连接")
+        }
+
+        return ("识别失败", "请稍后重试")
     }
 
     // MARK: - Notifications
@@ -490,7 +595,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     func showMicrophonePermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "Microphone Permission Required"
-        alert.informativeText = "VoiceInput cannot record audio without Microphone access.\n\nGo to System Settings > Privacy & Security > Microphone and enable VoiceInput."
+        alert.informativeText = "SpeakLow cannot record audio without Microphone access.\n\nGo to System Settings > Privacy & Security > Microphone and enable SpeakLow."
         alert.alertStyle = .critical
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Dismiss")
@@ -508,7 +613,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     func showAccessibilityAlert() {
         let alert = NSAlert()
         alert.messageText = "Accessibility Permission Required"
-        alert.informativeText = "VoiceInput cannot type transcriptions without Accessibility access.\n\nGo to System Settings > Privacy & Security > Accessibility and enable VoiceInput."
+        alert.informativeText = "SpeakLow cannot type transcriptions without Accessibility access.\n\nGo to System Settings > Privacy & Security > Accessibility and enable SpeakLow."
         alert.alertStyle = .critical
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Dismiss")

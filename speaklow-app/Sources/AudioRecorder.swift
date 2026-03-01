@@ -139,7 +139,10 @@ class AudioRecorder: NSObject, ObservableObject {
 
     /// Called on the audio thread when the first non-silent buffer arrives.
     var onRecordingReady: (() -> Void)?
+    /// Called when no non-silent audio is detected within the timeout period.
+    var onSilenceTimeout: (() -> Void)?
     private var readyFired = false
+    private var silenceTimer: DispatchSourceTimer?
 
     func startRecording(deviceUID: String? = nil) throws {
         let t0 = CFAbsoluteTimeGetCurrent()
@@ -199,7 +202,7 @@ class AudioRecorder: NSObject, ObservableObject {
             storedInputFormat = inputFormat
 
             // Install tap — checks isRecording and audioFile dynamically
-            inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
                 guard let self, self._recording.withLock({ $0 }) else { return }
 
                 self.bufferCount += 1
@@ -222,6 +225,8 @@ class AudioRecorder: NSObject, ObservableObject {
                 // Fire ready callback on first non-silent buffer
                 if !self.readyFired && rms > 0 {
                     self.readyFired = true
+                    self.silenceTimer?.cancel()
+                    self.silenceTimer = nil
                     let elapsed = (CFAbsoluteTimeGetCurrent() - self.recordingStartTime) * 1000
                     os_log(.info, log: recordingLog, "FIRST non-silent buffer at %.3fms — recording ready", elapsed)
                     self.onRecordingReady?()
@@ -288,6 +293,21 @@ class AudioRecorder: NSObject, ObservableObject {
         audioFileQueue.sync { self.audioFile = newAudioFile }
         _recording.withLock { $0 = true }
         self.isRecording = true
+
+        // Start silence detection timer — if no real audio within 2s, fire callback
+        silenceTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 2.0)
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.readyFired else { return }
+            os_log(.error, log: recordingLog, "Silence timeout — no audio detected in 2s, engine may be stale")
+            // Force engine teardown so next recording rebuilds it
+            self.invalidateEngine()
+            self.onSilenceTimeout?()
+        }
+        timer.resume()
+        silenceTimer = timer
+
         os_log(.info, log: recordingLog, "startRecording() complete: %.3fms total", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
     }
 
@@ -295,6 +315,8 @@ class AudioRecorder: NSObject, ObservableObject {
         let elapsed = (CFAbsoluteTimeGetCurrent() - recordingStartTime) * 1000
         os_log(.info, log: recordingLog, "stopRecording() called: %.3fms after start, %d buffers received", elapsed, bufferCount)
 
+        silenceTimer?.cancel()
+        silenceTimer = nil
         _recording.withLock { $0 = false }
         audioFileQueue.sync { audioFile = nil }
         isRecording = false
@@ -331,19 +353,36 @@ class AudioRecorder: NSObject, ObservableObject {
 
         let rms = sqrtf(sumOfSquares / Float(frames))
 
-        // Scale RMS (~0.01-0.1 for speech) to 0-1 range
-        let scaled = min(rms * 20.0, 1.0)
+        // Log scale: maps RMS to 0-1 matching human loudness perception
+        // RMS 0.001 → 0, RMS 0.01 → 0.25, RMS 0.05 → 0.67, RMS 0.10 → 0.85, RMS 0.30 → 1.0
+        let rmsDb = 20.0 * log10f(max(rms, 0.001))
+        let scaled = min(max((rmsDb + 60.0) / 50.0, 0.0), 1.0)
 
-        // Fast attack, slower release — follows speech dynamics closely
+        // Fast attack, moderate release — responsive to speech dynamics
         if scaled > smoothedLevel {
-            smoothedLevel = smoothedLevel * 0.3 + scaled * 0.7
+            smoothedLevel = smoothedLevel * 0.1 + scaled * 0.9
         } else {
-            smoothedLevel = smoothedLevel * 0.6 + scaled * 0.4
+            smoothedLevel = smoothedLevel * 0.4 + scaled * 0.6
         }
 
         DispatchQueue.main.async {
             self.audioLevel = self.smoothedLevel
         }
+    }
+
+    /// Tear down the audio engine so the next recording rebuilds it from scratch.
+    func invalidateEngine() {
+        _recording.withLock { $0 = false }
+        audioFileQueue.sync { audioFile = nil }
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine = nil
+        storedInputFormat = nil
+        currentDeviceUID = nil
+        isRecording = false
+        smoothedLevel = 0.0
+        DispatchQueue.main.async { self.audioLevel = 0.0 }
+        os_log(.info, log: recordingLog, "Engine invalidated — will rebuild on next recording")
     }
 
     func cleanup() {

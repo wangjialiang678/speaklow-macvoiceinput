@@ -1,5 +1,5 @@
 import Foundation
 
-// Notification names used throughout VoiceInput
+// Notification names used throughout SpeakLow
 // Defined in MenuBarView.swift:
 // .showSetup, .showSettings

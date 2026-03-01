@@ -9,7 +9,7 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text("VoiceInput v\(appVersion)")
+            Text("SpeakLow v\(appVersion)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
@@ -94,7 +94,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            Button("Quit VoiceInput") {
+            Button("Quit SpeakLow") {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q")

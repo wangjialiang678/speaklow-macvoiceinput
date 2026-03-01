@@ -8,11 +8,12 @@ class RecordingOverlayState: ObservableObject {
     @Published var audioLevel: Float = 0.0
 }
 
-enum OverlayPhase {
+enum OverlayPhase: Equatable {
     case initializing
     case recording
     case transcribing
     case done
+    case error(title: String, suggestion: String)
 }
 
 // MARK: - Panel Helpers
@@ -112,6 +113,10 @@ class RecordingOverlayManager {
 
     func dismiss() {
         DispatchQueue.main.async { self._dismiss() }
+    }
+
+    func showError(title: String, suggestion: String) {
+        DispatchQueue.main.async { self._showError(title: title, suggestion: suggestion) }
     }
 
     /// Height of the notch area (menu bar inset) that the panel extends into.
@@ -252,6 +257,59 @@ class RecordingOverlayManager {
         }
     }
 
+    private var errorPanel: NSPanel?
+
+    private func _showError(title: String, suggestion: String) {
+        _dismiss()
+
+        let hasNotch = screenHasNotch
+        let panelWidth: CGFloat = 240
+        let contentHeight: CGFloat = 52
+        let overlap = hasNotch ? notchOverlap : 0
+        let panelHeight = contentHeight + overlap
+
+        let panel = makeOverlayPanel(width: panelWidth, height: panelHeight)
+        panel.hasShadow = false
+
+        let view = ErrorOverlayView(title: title, suggestion: suggestion)
+        panel.contentView = makeNotchContent(
+            width: panelWidth,
+            height: panelHeight,
+            cornerRadius: hasNotch ? 18 : 12,
+            rootView: view.padding(.top, overlap)
+        )
+
+        if let screen = NSScreen.main {
+            let x = panelX(screen, width: panelWidth)
+            let hiddenY = screen.frame.maxY
+            let visibleY = screen.frame.maxY - panelHeight
+
+            panel.setFrame(NSRect(x: x, y: hiddenY, width: panelWidth, height: panelHeight), display: true)
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.18
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.56, 0.64, 1.0)
+                panel.animator().setFrame(NSRect(x: x, y: visibleY, width: panelWidth, height: panelHeight), display: true)
+            }
+        }
+
+        self.errorPanel = panel
+
+        // Auto-dismiss after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self, let panel = self.errorPanel else { return }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.25
+                panel.animator().alphaValue = 0
+            }, completionHandler: {
+                panel.orderOut(nil)
+                self.errorPanel = nil
+            })
+        }
+    }
+
     private func _dismiss() {
         if let panel = overlayWindow {
             panel.orderOut(nil)
@@ -260,6 +318,10 @@ class RecordingOverlayManager {
         if let panel = transcribingPanel {
             panel.orderOut(nil)
             transcribingPanel = nil
+        }
+        if let panel = errorPanel {
+            panel.orderOut(nil)
+            errorPanel = nil
         }
     }
 
@@ -350,15 +412,40 @@ struct RecordingOverlayView: View {
 
     var body: some View {
         Group {
-            if state.phase == .initializing {
+            switch state.phase {
+            case .initializing:
                 InitializingDotsView()
                     .transition(.opacity)
-            } else {
+            default:
                 WaveformView(audioLevel: state.audioLevel)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: state.phase == .initializing)
+        .animation(.easeInOut(duration: 0.2), value: state.phase)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Error Overlay
+
+struct ErrorOverlayView: View {
+    let title: String
+    let suggestion: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.yellow)
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            Text(suggestion)
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.7))
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

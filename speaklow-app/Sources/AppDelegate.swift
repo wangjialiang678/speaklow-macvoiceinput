@@ -7,6 +7,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let asrBridgeManager = ASRBridgeManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Give AppState a reference to bridge manager for auto-restart
+        appState.bridgeManager = asrBridgeManager
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleShowSetup),

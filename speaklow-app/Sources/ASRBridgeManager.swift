@@ -81,6 +81,50 @@ class ASRBridgeManager {
 
     var isRunning: Bool { process?.isRunning ?? false }
 
+    /// Restart the bridge process (stop then start).
+    func restart() throws {
+        os_log(.info, log: bridgeLog, "Restarting asr-bridge...")
+        stop()
+        try start()
+    }
+
+    /// Check bridge health; if unhealthy, restart and wait for it to become ready.
+    /// Returns true if bridge is healthy after the attempt.
+    func ensureRunning() async -> Bool {
+        let service = TranscriptionService()
+
+        // Quick check — if already healthy, return immediately
+        if await service.checkHealth() {
+            os_log(.info, log: bridgeLog, "ensureRunning: bridge already healthy")
+            return true
+        }
+
+        os_log(.info, log: bridgeLog, "ensureRunning: bridge unhealthy, attempting restart...")
+
+        // Restart on main thread (Process management)
+        do {
+            try await MainActor.run {
+                try self.restart()
+            }
+        } catch {
+            os_log(.error, log: bridgeLog, "ensureRunning: restart failed: %{public}@", error.localizedDescription)
+            return false
+        }
+
+        // Poll health for up to 5 seconds after restart
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if await service.checkHealth() {
+                os_log(.info, log: bridgeLog, "ensureRunning: bridge is READY after restart")
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        os_log(.error, log: bridgeLog, "ensureRunning: bridge still unhealthy after restart")
+        return false
+    }
+
     private func buildEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
 
