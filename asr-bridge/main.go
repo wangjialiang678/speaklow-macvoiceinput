@@ -29,6 +29,8 @@ func main() {
 		log.Fatal("DASHSCOPE_API_KEY is not set")
 	}
 
+	initHotwords(apiKey)
+
 	port := os.Getenv("ASR_BRIDGE_PORT")
 	if port == "" {
 		port = defaultPort
