@@ -10,7 +10,7 @@ RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
 ASR_BRIDGE = ../asr-bridge/asr-bridge
 
-.PHONY: all clean run
+.PHONY: all clean run install uninstall
 
 all: $(MACOS_DIR)/$(APP_NAME)
 
@@ -36,3 +36,13 @@ clean:
 
 run: all
 	open "$(APP_BUNDLE)"
+
+install: all
+	@echo "Installing to /Applications/$(APP_NAME).app ..."
+	@cp -R "$(APP_BUNDLE)" "/Applications/$(APP_NAME).app"
+	@echo "Done. You can now launch $(APP_NAME) from Launchpad."
+
+uninstall:
+	@echo "Removing /Applications/$(APP_NAME).app ..."
+	@rm -rf "/Applications/$(APP_NAME).app"
+	@echo "Done."

@@ -1,0 +1,98 @@
+Cursor
+Claude Code
+Copilot
+TRAE
+OpenCode
+CLI
+CLAUDE.md
+Skills
+Hooks
+sub-agent
+MCP
+worktree
+context window
+token
+system prompt
+Claude
+Opus
+Sonnet
+GPT
+Codex
+Gemini
+Llama
+Grok
+DeepSeek
+通义千问
+Qwen
+Kimi
+智谱
+GLM
+豆包
+MiniMax
+Anthropic
+OpenAI
+Hugging Face
+百炼
+硅基流动
+魔搭
+Groq
+vibe coding
+vibe code
+prompt
+prompt engineering
+PRD
+MVP
+code review
+hallucination
+fine-tuning
+chain of thought
+Agent
+agentic
+LangChain
+Dify
+扣子
+Coze
+Manus
+n8n
+function calling
+tool use
+A2A
+RAG
+embedding
+LLM
+多模态
+LoRA
+transformer
+React
+Vue
+Tailwind
+FastAPI
+Supabase
+Firebase
+Redis
+Vercel
+Cloudflare
+VS Code
+Git
+GitHub
+pull request
+npm
+Node.js
+Python
+TypeScript
+Rust
+Swift
+Vite
+Docker
+Playwright
+API
+SDK
+JSON
+WebSocket
+REST
+Markdown
+md
+ASR
+TTS
+Whisper
+FunASR
