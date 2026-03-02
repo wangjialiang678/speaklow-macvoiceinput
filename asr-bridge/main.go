@@ -38,6 +38,7 @@ func main() {
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/v1/transcribe", transcribeHandler(apiKey))
 	mux.HandleFunc("/v1/stream", streamHandler(apiKey))
+	mux.HandleFunc("/v1/refine", refineHandler(apiKey))
 
 	handler := corsMiddleware(loggingMiddleware(mux))
 

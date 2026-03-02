@@ -134,6 +134,7 @@ func transcribe(apiKey string, audioData []byte, model string, sampleRate int, f
 				"format":                       format,
 				"sample_rate":                  sampleRate,
 				"semantic_punctuation_enabled": true,
+				"language_hints":               []string{"zh", "en"},
 			},
 			Input: map[string]any{},
 		},

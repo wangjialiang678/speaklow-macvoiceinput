@@ -47,6 +47,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var errorMessage: String?
     @Published var statusText: String = "Ready"
     @Published var hasAccessibility = false
+
+    @Published var llmRefineEnabled: Bool {
+        didSet { UserDefaults.standard.set(llmRefineEnabled, forKey: "llm_refine_enabled") }
+    }
+    @Published var llmRefineMode: RefineMode {
+        didSet { UserDefaults.standard.set(llmRefineMode.rawValue, forKey: "llm_refine_mode") }
+    }
     @Published var launchAtLogin: Bool {
         didSet { setLaunchAtLogin(launchAtLogin) }
     }
@@ -79,11 +86,17 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let initialAccessibility = AXIsProcessTrusted()
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
+        // LLM refinement defaults: enabled, both modes
+        let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? true
+        let llmMode = RefineMode(rawValue: UserDefaults.standard.string(forKey: "llm_refine_mode") ?? "both") ?? .both
+
         self.hasCompletedSetup = hasCompletedSetup
         self.selectedHotkey = selectedHotkey
         self.hasAccessibility = initialAccessibility
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
         self.selectedMicrophoneID = selectedMicrophoneID
+        self.llmRefineEnabled = llmEnabled
+        self.llmRefineMode = llmMode
 
         refreshAvailableMicrophones()
         installAudioDeviceListener()
@@ -530,29 +543,18 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     } else {
                         self.lastTranscript = trimmed
 
-                        viLog("Calling TextInserter.insert()...")
-                        let insertResult = TextInserter.insert(trimmed)
-                        viLog("TextInserter result: \(insertResult)")
-
-                        switch insertResult {
-                        case .insertedViaAX:
-                            self.statusText = "已插入: \(trimmed.prefix(20))..."
-                            NSSound(named: "Glass")?.play()
-                        case .pastedViaClipboard:
-                            self.statusText = "已粘贴: \(trimmed.prefix(20))..."
-                            NSSound(named: "Glass")?.play()
-                        case .copiedToClipboard:
-                            self.statusText = "已复制到剪贴板（请手动粘贴）"
-                            NSSound(named: "Purr")?.play()
-                            self.showNotification(
-                                title: "已复制到剪贴板",
-                                body: "无法自动插入，请按 Cmd+V 粘贴：\(trimmed.prefix(50))"
-                            )
-                        }
-
-                        self.overlayManager.showDone()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                            self.overlayManager.dismiss()
+                        if self.llmRefineEnabled {
+                            self.overlayManager.updatePreviewText("✨ 正在优化...")
+                            viLog("Batch: starting LLM refine, mode=\(self.llmRefineMode.rawValue)")
+                            let mode = self.llmRefineMode
+                            Task {
+                                let refined = await TextRefineService.refine(text: trimmed, mode: mode)
+                                await MainActor.run {
+                                    self.batchInsertAndFinish(originalText: trimmed, finalText: refined)
+                                }
+                            }
+                        } else {
+                            self.batchInsertAndFinish(originalText: trimmed, finalText: trimmed)
                         }
                     }
 
@@ -714,34 +716,91 @@ extension AppState: StreamingTranscriptionDelegate {
         } else {
             lastTranscript = fullText
 
-            // One-shot paste all accumulated text
-            viLog("Streaming: one-shot paste, length=\(fullText.count)")
-            let result = TextInserter.insert(fullText)
-            viLog("Streaming: paste result=\(result)")
-
-            switch result {
-            case .insertedViaAX:
-                statusText = "已插入: \(fullText.prefix(20))..."
-            case .pastedViaClipboard:
-                statusText = "已粘贴: \(fullText.prefix(20))..."
-            case .copiedToClipboard:
-                statusText = "已复制到剪贴板（请手动粘贴）"
-            }
-            NSSound(named: "Glass")?.play()
-            overlayManager.dismissPreviewPanel()
-            overlayManager.showDone()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                self.overlayManager.dismiss()
+            // Optional LLM refinement, then insert
+            if llmRefineEnabled {
+                overlayManager.updatePreviewText("✨ 正在优化...")
+                viLog("Streaming: starting LLM refine, mode=\(llmRefineMode.rawValue)")
+                let mode = llmRefineMode
+                Task {
+                    let refined = await TextRefineService.refine(text: fullText, mode: mode)
+                    await MainActor.run {
+                        self.insertAndFinish(originalText: fullText, finalText: refined)
+                    }
+                }
+            } else {
+                insertAndFinish(originalText: fullText, finalText: fullText)
             }
         }
 
         audioRecorder.cleanup()
+    }
+
+    /// Shared insertion logic for both streaming and batch paths.
+    private func insertAndFinish(originalText: String, finalText: String) {
+        let changed = finalText != originalText
+        if changed {
+            viLog("LLM refined: '\(originalText.prefix(30))' → '\(finalText.prefix(30))'")
+            lastTranscript = finalText
+        }
+
+        viLog("Inserting text, length=\(finalText.count)")
+        let result = TextInserter.insert(finalText)
+        viLog("Insert result=\(result)")
+
+        switch result {
+        case .insertedViaAX:
+            statusText = "已插入: \(finalText.prefix(20))..."
+        case .pastedViaClipboard:
+            statusText = "已粘贴: \(finalText.prefix(20))..."
+        case .copiedToClipboard:
+            statusText = "已复制到剪贴板（请手动粘贴）"
+        }
+        NSSound(named: "Glass")?.play()
+        overlayManager.dismissPreviewPanel()
+        overlayManager.showDone()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            self.overlayManager.dismiss()
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             if self.statusText.hasPrefix("已插入") || self.statusText.hasPrefix("已粘贴") ||
                self.statusText.hasPrefix("已复制") || self.statusText == "未检测到语音" {
                 self.statusText = "Ready"
             }
+        }
+    }
+
+    /// Batch-mode insertion with notification fallback for copiedToClipboard.
+    private func batchInsertAndFinish(originalText: String, finalText: String) {
+        let changed = finalText != originalText
+        if changed {
+            viLog("LLM refined (batch): '\(originalText.prefix(30))' → '\(finalText.prefix(30))'")
+            lastTranscript = finalText
+        }
+
+        viLog("Batch: inserting text, length=\(finalText.count)")
+        let insertResult = TextInserter.insert(finalText)
+        viLog("Batch: insert result=\(insertResult)")
+
+        switch insertResult {
+        case .insertedViaAX:
+            statusText = "已插入: \(finalText.prefix(20))..."
+            NSSound(named: "Glass")?.play()
+        case .pastedViaClipboard:
+            statusText = "已粘贴: \(finalText.prefix(20))..."
+            NSSound(named: "Glass")?.play()
+        case .copiedToClipboard:
+            statusText = "已复制到剪贴板（请手动粘贴）"
+            NSSound(named: "Purr")?.play()
+            showNotification(
+                title: "已复制到剪贴板",
+                body: "无法自动插入，请按 Cmd+V 粘贴：\(finalText.prefix(50))"
+            )
+        }
+
+        overlayManager.showDone()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            self.overlayManager.dismiss()
         }
     }
 

@@ -323,6 +323,7 @@ func connectDashScope(apiKey, model, format string, sampleRate int) (*websocket.
 				"format":                       format,
 				"sample_rate":                  sampleRate,
 				"semantic_punctuation_enabled": true,
+				"language_hints":               []string{"zh", "en"},
 			},
 			Input: map[string]any{},
 		},

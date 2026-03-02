@@ -41,6 +41,23 @@ struct SettingsView: View {
                     }
             }
 
+            Section("AI 文字优化") {
+                Toggle("启用 AI 优化", isOn: $appState.llmRefineEnabled)
+
+                if appState.llmRefineEnabled {
+                    Picker("优化模式", selection: $appState.llmRefineMode) {
+                        ForEach(RefineMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("语音识别后由大模型自动优化文字，可能增加 1-3 秒延迟")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("ASR Bridge") {
                 ASRBridgeStatusView()
             }
