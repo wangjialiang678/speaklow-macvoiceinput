@@ -10,7 +10,9 @@ RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
 ASR_BRIDGE = ../asr-bridge/asr-bridge
 
-.PHONY: all clean run install uninstall
+ENV_FILE ?= $(HOME)/.config/speaklow/.env
+
+.PHONY: all clean run install uninstall dist
 
 all: $(MACOS_DIR)/$(APP_NAME)
 
@@ -47,3 +49,16 @@ uninstall:
 	@echo "Removing /Applications/$(APP_NAME).app ..."
 	@rm -rf "/Applications/$(APP_NAME).app"
 	@echo "Done."
+
+# Build a distributable zip with API key bundled inside
+dist: all
+	@if [ ! -f "$(ENV_FILE)" ]; then \
+		echo "Error: $(ENV_FILE) not found. Set ENV_FILE to your .env path."; \
+		exit 1; \
+	fi
+	@cp "$(ENV_FILE)" "$(MACOS_DIR)/.env"
+	@echo "Bundled .env into app"
+	@codesign --force --deep --sign - "$(APP_BUNDLE)"
+	@echo "Ad-hoc signed"
+	@cd $(BUILD_DIR) && zip -r -q "$(APP_NAME).zip" "$(APP_NAME).app"
+	@echo "Created $(BUILD_DIR)/$(APP_NAME).zip — ready to share"
