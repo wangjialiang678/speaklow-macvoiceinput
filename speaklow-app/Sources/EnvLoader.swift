@@ -24,12 +24,6 @@ struct EnvLoader {
             }
         }
 
-        // 4. Development fallback path
-        let devPath = homeDir + "/projects/组件模块/audio-asr-suite/go/audio-asr-go/.env"
-        if let key = loadKey("DASHSCOPE_API_KEY", fromEnvFile: devPath) {
-            return key
-        }
-
         return nil
     }
 

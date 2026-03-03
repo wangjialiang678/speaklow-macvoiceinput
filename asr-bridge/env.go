@@ -13,7 +13,6 @@ func loadEnv() {
 	candidates := []string{
 		expandHome("~/.config/speaklow/.env"),
 		sameDir(".env"),
-		"/Users/michael/projects/组件模块/audio-asr-suite/go/audio-asr-go/.env",
 	}
 
 	for _, path := range candidates {

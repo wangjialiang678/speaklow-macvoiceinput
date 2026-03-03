@@ -79,6 +79,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var streamingService: StreamingTranscriptionService?
     private var isStreaming = false
     private var committedSentences: [String] = []
+    private var lastPartialText: String = ""
+    private var lastPartialChangeTime: Date = Date()
+    private var streamingStallTimer: Timer?
 
     init() {
         let hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
@@ -328,12 +331,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 viLog("Pre-flight: asr-bridge health check failed")
                 await MainActor.run {
                     self.isRecording = false
-                    self.statusText = "服务异常"
-                    self.errorMessage = "语音服务未启动"
+                    self.statusText = "语音功能异常"
+                    self.errorMessage = "语音功能出了问题"
                     NSSound(named: "Basso")?.play()
                     self.overlayManager.showError(
-                        title: "语音服务未启动",
-                        suggestion: "请重启 SpeakLow"
+                        title: "语音功能出了问题",
+                        suggestion: "请退出并重新打开 SpeakLow"
                     )
                 }
                 return
@@ -397,13 +400,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 self.audioLevelCancellable?.cancel()
                 self.audioLevelCancellable = nil
                 self.isRecording = false
-                self.statusText = "麦克风无响应"
-                self.errorMessage = "麦克风无响应"
+                self.statusText = "麦克风没有声音"
+                self.errorMessage = "麦克风没有声音"
                 self.audioRecorder.cleanup()
                 NSSound(named: "Basso")?.play()
                 self.overlayManager.showError(
-                    title: "麦克风无响应",
-                    suggestion: "请检查麦克风或重启应用"
+                    title: "麦克风没有声音",
+                    suggestion: "请检查麦克风是否正常连接"
                 )
             }
         }
@@ -457,6 +460,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         viLog("stopStreamingRecording() entered")
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
+        streamingStallTimer?.invalidate()
+        streamingStallTimer = nil
 
         // Stop recording (flushes remaining audio buffer)
         _ = audioRecorder.stopRecording()
@@ -464,12 +469,20 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         // Tell streaming service we're done sending audio
         streamingService?.stop()
+        viLog("stopStreamingRecording: stop message sent to bridge")
 
         // Show finalizing indicator
         overlayManager.slideUpToNotch { [weak self] in
             self?.overlayManager.showTranscribing()
         }
         statusText = "正在完成..."
+
+        // Safety timeout: if streamingDidFinish doesn't fire within 5s, force-finish
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            guard let self, self.isStreaming else { return }
+            viLog("stopStreamingRecording: safety timeout — force-finishing streaming session")
+            self.streamingDidFinish()
+        }
     }
 
     // MARK: - Transcription
@@ -600,35 +613,61 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func userFriendlyTranscriptionError(_ error: Error) -> (title: String, suggestion: String) {
-        let desc = error.localizedDescription.lowercased()
-
+        // Extract the full error chain for keyword matching
+        let desc: String
         if let txErr = error as? TranscriptionError {
             switch txErr {
-            case .transcriptionTimedOut:
-                return ("网络连接超时", "请检查网络连接")
-            case .submissionFailed(let msg):
-                if msg.lowercased().contains("network") || msg.lowercased().contains("connection") {
-                    return ("网络连接失败", "请检查网络连接")
-                }
-                if msg.contains("18089") || msg.contains("localhost") {
-                    return ("语音服务未响应", "请重启 SpeakLow")
-                }
-                return ("识别服务异常", "请稍后重试")
-            case .transcriptionFailed:
-                return ("识别服务异常", "请稍后重试")
-            case .pollFailed:
-                return ("识别结果异常", "请稍后重试")
+            case .submissionFailed(let msg): desc = msg.lowercased()
+            case .transcriptionFailed(let msg): desc = msg.lowercased()
+            case .transcriptionTimedOut: desc = "timeout"
+            case .pollFailed(let msg): desc = msg.lowercased()
             }
+        } else {
+            desc = error.localizedDescription.lowercased()
         }
 
+        // 1. No network / DNS failure
+        if desc.contains("no such host") || desc.contains("dns") ||
+           desc.contains("name resolution") || desc.contains("cannot find the server") ||
+           desc.contains("not connected to the internet") ||
+           desc.contains("network is unreachable") || desc.contains("no route to host") {
+            return ("没有网络连接", "请检查 Wi-Fi 或网络设置")
+        }
+
+        // 2. Network connectivity issues
         if desc.contains("timed out") || desc.contains("timeout") {
-            return ("网络连接超时", "请检查网络连接")
+            return ("网络太慢了", "请检查网络连接后再试")
         }
-        if desc.contains("network") || desc.contains("connection") {
-            return ("网络连接失败", "请检查网络连接")
+        if desc.contains("network") || desc.contains("connection refused") ||
+           desc.contains("connection reset") || desc.contains("connection was lost") ||
+           desc.contains("socket is not connected") {
+            return ("网络连接断了", "请检查网络连接后再试")
         }
 
-        return ("识别失败", "请稍后重试")
+        // 3. Bridge (local ASR service) down
+        if desc.contains("18089") || desc.contains("localhost") {
+            return ("语音功能出了问题", "请退出并重新打开 SpeakLow")
+        }
+
+        // 4. API auth / quota errors
+        if desc.contains("401") || desc.contains("403") ||
+           desc.contains("unauthorized") || desc.contains("invalid api") ||
+           desc.contains("authentication") || desc.contains("api key") {
+            return ("API 密钥有问题", "请检查 DashScope API Key 配置")
+        }
+        if desc.contains("429") || desc.contains("rate limit") || desc.contains("quota") ||
+           desc.contains("too many requests") {
+            return ("用得太频繁了", "请稍等一会儿再试")
+        }
+
+        // 5. Server-side error (DashScope 500 etc.)
+        if desc.contains("status 500") || desc.contains("internal server error") ||
+           desc.contains("502") || desc.contains("503") || desc.contains("service unavailable") {
+            return ("识别服务出了点问题", "通常很快恢复，请稍后再试")
+        }
+
+        // 6. Generic fallback
+        return ("出了点问题", "请重试，如果反复出现请重启应用")
     }
 
     // MARK: - Notifications
@@ -681,12 +720,34 @@ final class AppState: ObservableObject, @unchecked Sendable {
 extension AppState: StreamingTranscriptionDelegate {
     func streamingDidStart() {
         viLog("Streaming: bridge connected, ready to receive audio")
+
+        // Start stall detection: check every 3s if partial text has been stuck
+        lastPartialText = ""
+        lastPartialChangeTime = Date()
+        streamingStallTimer?.invalidate()
+        streamingStallTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            guard let self, self.isStreaming else { return }
+            let stalledFor = Date().timeIntervalSince(self.lastPartialChangeTime)
+            if stalledFor > 10 && !self.lastPartialText.isEmpty {
+                viLog("Streaming: partial text stuck for \(Int(stalledFor))s, force-finishing")
+                self.streamingStallTimer?.invalidate()
+                self.streamingStallTimer = nil
+                // Force-finish: treat current committed text as final
+                self.streamingDidFinish()
+            }
+        }
     }
 
     func streamingDidReceivePartial(text: String) {
         viLog("Streaming partial: \(text.prefix(40))")
         let display = committedSentences.joined() + text
         overlayManager.updatePreviewText(display)
+
+        // Track stall: if partial text hasn't changed for 10s, the stream is stuck
+        if text != lastPartialText {
+            lastPartialText = text
+            lastPartialChangeTime = Date()
+        }
     }
 
     func streamingDidReceiveSentence(text: String) {
@@ -697,9 +758,12 @@ extension AppState: StreamingTranscriptionDelegate {
     }
 
     func streamingDidFinish() {
+        guard isStreaming else { return } // Prevent double-fire from safety timeout
         viLog("Streaming: finished")
 
         isStreaming = false
+        streamingStallTimer?.invalidate()
+        streamingStallTimer = nil
         streamingService?.disconnect()
         streamingService = nil
         audioRecorder.onStreamingAudioChunk = nil
@@ -808,12 +872,34 @@ extension AppState: StreamingTranscriptionDelegate {
         viLog("Streaming FAILED: \(error.localizedDescription), falling back to batch mode")
 
         isStreaming = false
+        streamingStallTimer?.invalidate()
+        streamingStallTimer = nil
         streamingService?.disconnect()
         streamingService = nil
         audioRecorder.onStreamingAudioChunk = nil
         overlayManager.dismissPreviewPanel()
 
-        // Don't stop recording — audio continues writing to file for batch fallback.
+        // Check if this is an unrecoverable error (no network, auth, etc.)
+        // In these cases batch fallback will also fail, so show error immediately.
+        let desc = error.localizedDescription.lowercased()
+        let isNetworkError = desc.contains("no such host") || desc.contains("dns") ||
+            desc.contains("not connected to the internet") || desc.contains("network is unreachable")
+        let isAuthError = desc.contains("401") || desc.contains("403") || desc.contains("unauthorized")
+
+        if isNetworkError || isAuthError {
+            viLog("Streaming: unrecoverable error, stopping recording and showing error")
+            _ = audioRecorder.stopRecording()
+            isRecording = false
+            audioRecorder.cleanup()
+            let (errTitle, errSuggestion) = userFriendlyTranscriptionError(error)
+            statusText = errTitle
+            errorMessage = error.localizedDescription
+            NSSound(named: "Basso")?.play()
+            overlayManager.showError(title: errTitle, suggestion: errSuggestion)
+            return
+        }
+
+        // Recoverable: keep recording for batch fallback.
         // When user releases hotkey, handleHotkeyUp will call stopAndTranscribe().
     }
 }
