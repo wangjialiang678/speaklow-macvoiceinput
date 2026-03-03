@@ -1,0 +1,3 @@
+[submodule "vendor/audio-asr-suite"]
+	path = vendor/audio-asr-suite
+	url = https://github.com/wangjialiang678/audio-asr-suite
