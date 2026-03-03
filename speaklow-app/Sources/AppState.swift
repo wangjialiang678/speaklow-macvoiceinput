@@ -266,16 +266,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         let t0 = CFAbsoluteTimeGetCurrent()
         viLog("startRecording() entered")
-        // Always re-check live instead of relying on cached value
+
+        // Update AX status for UI, but don't block recording.
+        // AX only affects text insertion method; TextInserter has clipboard fallback.
         hasAccessibility = AXIsProcessTrusted()
         viLog("AXIsProcessTrusted() = \(hasAccessibility)")
-        guard hasAccessibility else {
-            isRecording = false
-            errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
-            statusText = "No Accessibility"
-            showAccessibilityAlert()
-            return
-        }
+
         guard ensureMicrophoneAccess() else {
             isRecording = false
             return

@@ -35,10 +35,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             appState.startHotkeyMonitoring()
             appState.startAccessibilityPolling()
-
-            if !AXIsProcessTrusted() {
-                appState.showAccessibilityAlert()
-            }
+            // AX permission is checked at insertion time with clipboard fallback.
+            // No blocking alert needed here — avoids spurious prompts after recompile.
         }
     }
 
@@ -134,9 +132,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         appState.startHotkeyMonitoring()
         appState.startAccessibilityPolling()
-
-        if !AXIsProcessTrusted() {
-            appState.showAccessibilityAlert()
-        }
     }
 }
