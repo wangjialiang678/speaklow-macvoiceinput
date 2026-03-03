@@ -260,18 +260,26 @@ final class AppState: ObservableObject, @unchecked Sendable {
     // MARK: - Recording
 
     private func startRecording() {
+        // Prevent double-entry: hotkey can fire twice before isRecording is set
+        guard !isRecording else { return }
+        isRecording = true
+
         let t0 = CFAbsoluteTimeGetCurrent()
         viLog("startRecording() entered")
         // Always re-check live instead of relying on cached value
         hasAccessibility = AXIsProcessTrusted()
         viLog("AXIsProcessTrusted() = \(hasAccessibility)")
         guard hasAccessibility else {
+            isRecording = false
             errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
             statusText = "No Accessibility"
             showAccessibilityAlert()
             return
         }
-        guard ensureMicrophoneAccess() else { return }
+        guard ensureMicrophoneAccess() else {
+            isRecording = false
+            return
+        }
         beginRecording()
         os_log(.info, log: recordingLog, "startRecording() finished: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
     }
@@ -305,7 +313,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func beginRecording() {
         os_log(.info, log: recordingLog, "beginRecording() entered")
         errorMessage = nil
-        isRecording = true
         statusText = "Starting..."
 
         // Pre-flight: check if asr-bridge is reachable; auto-restart if not
