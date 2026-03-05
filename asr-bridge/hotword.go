@@ -1,147 +1,70 @@
 package main
 
 import (
-	"context"
-	"crypto/sha256"
+	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"github.com/michael/audio-asr-suite/go/audio-asr-go/pkg/hotword"
 )
 
-// vocabularyID is set during startup and read by transcribe/stream handlers.
-// Empty string means no hotwords configured (ASR still works, just without vocabulary biasing).
-var vocabularyID string
+// qwen3Hotwords is the corpus.text for qwen3 realtime ASR (loaded from hotwords.txt at startup)
+var qwen3Hotwords string
 
-func initHotwords(apiKey string) {
-	hotwordsPath := findHotwordsFile()
-	if hotwordsPath == "" {
-		log.Println("[hotword] hotwords.txt not found, skipping vocabulary init")
+func initHotwords() {
+	path := findHotwordsFile()
+	if path == "" {
+		log.Println("[hotword] hotwords.txt not found, skipping")
 		return
 	}
-	log.Printf("[hotword] found hotwords.txt at %s", hotwordsPath)
+	log.Printf("[hotword] loading hotwords from %s", path)
 
-	cachedID := loadCachedVocabularyID()
-	currentHash, hashErr := computeFileHash(hotwordsPath)
-	cachedHash := loadCachedHash()
-
-	if cachedID != "" && hashErr == nil && currentHash == cachedHash {
-		vocabularyID = cachedID
-		log.Printf("[hotword] reusing cached vocabularyID=%s (hotwords unchanged)", vocabularyID)
-		return
-	}
-
-	manager, err := hotword.NewManager(hotword.ManagerOptions{
-		APIKey: apiKey,
-	})
-	if err != nil {
-		if cachedID != "" {
-			vocabularyID = cachedID
-			log.Printf("[hotword] manager init failed (%v), using cached vocabularyID=%s", err, vocabularyID)
-		} else {
-			log.Printf("[hotword] create manager failed: %v, no cache available", err)
-		}
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	// Try to reuse existing table with "speaklow" prefix
-	tables, err := manager.ListHotwordTables(ctx, hotword.ListTablesRequest{
-		Prefix: "speaklow",
-	})
-	if err != nil {
-		log.Printf("[hotword] list tables failed: %v, will try creating new", err)
-	}
-
-	if len(tables) > 0 {
-		vocabularyID = tables[0].VocabularyID
-		log.Printf("[hotword] reusing existing table: %s", vocabularyID)
-		if _, err := manager.ReplaceHotwordsFromTextFile(ctx, vocabularyID, hotwordsPath); err != nil {
-			log.Printf("[hotword] replace hotwords failed: %v (keeping old words)", err)
-		} else {
-			log.Printf("[hotword] updated hotwords in table %s", vocabularyID)
-			saveCachedVocabularyID(vocabularyID)
-			if hashErr == nil {
-				saveCachedHash(currentHash)
-			}
-		}
-		return
-	}
-
-	// Create new table
-	words, err := loadHotwordsFromFile(hotwordsPath)
-	if err != nil {
-		log.Printf("[hotword] parse hotwords file failed: %v", err)
-		return
-	}
-	table, err := manager.CreateHotwordTable(ctx, hotword.CreateTableRequest{
-		Prefix:      "speaklow",
-		TargetModel: "paraformer-realtime-v2",
-		Words:       words,
-	})
-	if err != nil {
-		log.Printf("[hotword] create table failed: %v", err)
-		return
-	}
-	vocabularyID = table.VocabularyID
-	log.Printf("[hotword] created new table: %s (%d words)", vocabularyID, len(words))
-	saveCachedVocabularyID(vocabularyID)
-	if hashErr == nil {
-		saveCachedHash(currentHash)
+	qwen3Hotwords = buildCorpusText(path)
+	if qwen3Hotwords != "" {
+		log.Printf("[hotword] corpus.text loaded (%d chars)", len(qwen3Hotwords))
 	}
 }
 
-func vocabularyIDCachePath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "speaklow", "vocabulary_id")
-}
-
-func loadCachedVocabularyID() string {
-	data, err := os.ReadFile(vocabularyIDCachePath())
+func buildCorpusText(path string) string {
+	f, err := os.Open(path)
 	if err != nil {
+		log.Printf("[hotword] open file: %v", err)
 		return ""
 	}
-	return strings.TrimSpace(string(data))
-}
+	defer f.Close()
 
-func saveCachedVocabularyID(id string) {
-	path := vocabularyIDCachePath()
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, []byte(id), 0o600)
-}
+	var words []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
 
-func hotwordsHashCachePath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "speaklow", "hotwords_hash")
-}
+		fields := strings.Split(line, "\t")
+		if len(fields) == 0 {
+			continue
+		}
 
-func computeFileHash(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
+		word := fields[0]
+		// 第5列是音近提示（可选）
+		if len(fields) >= 5 && strings.TrimSpace(fields[4]) != "" {
+			word = fmt.Sprintf("%s（%s）", fields[0], strings.TrimSpace(fields[4]))
+		}
+		words = append(words, word)
 	}
-	sum := sha256.Sum256(data)
-	return fmt.Sprintf("%x", sum), nil
-}
-
-func loadCachedHash() string {
-	data, err := os.ReadFile(hotwordsHashCachePath())
-	if err != nil {
+	if err := scanner.Err(); err != nil {
+		log.Printf("[hotword] scan file: %v", err)
 		return ""
 	}
-	return strings.TrimSpace(string(data))
-}
 
-func saveCachedHash(hash string) {
-	path := hotwordsHashCachePath()
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, []byte(hash), 0o600)
+	if len(words) == 0 {
+		return ""
+	}
+
+	header := "本次对话涉及 AI 开发技术，以下专有名词可能出现\n（括号内为中文音近说法，听到时请输出英文原文）：\n"
+	return header + strings.Join(words, ", ")
 }
 
 func findHotwordsFile() string {
@@ -171,12 +94,4 @@ func findHotwordsFile() string {
 		}
 	}
 	return ""
-}
-
-func loadHotwordsFromFile(path string) ([]hotword.Entry, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return hotword.ParseText(string(content))
 }
