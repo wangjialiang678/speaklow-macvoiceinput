@@ -123,6 +123,13 @@ enum AudioRecorderError: LocalizedError {
 class AudioRecorder: NSObject, ObservableObject {
     private let streamingSampleRate: Double = 16000
     private let streamingChannels: AVAudioChannelCount = 1
+    private let maxRetainedRecordings = 20
+    private static let recordingCacheDir: URL = {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/SpeakLow/recordings")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var tempFileURL: URL?
@@ -320,9 +327,12 @@ class AudioRecorder: NSObject, ObservableObject {
             throw AudioRecorderError.invalidInputFormat("Failed to create 16kHz output format")
         }
 
-        // Create a temp file to write audio to
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent(UUID().uuidString + ".wav")
+        // Create recording file in cache directory
+        pruneOldRecordings()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let timestamp = formatter.string(from: Date())
+        let fileURL = Self.recordingCacheDir.appendingPathComponent("recording-\(timestamp).wav")
         self.tempFileURL = fileURL
 
         let wavSettings: [String: Any] = [
@@ -453,10 +463,23 @@ class AudioRecorder: NSObject, ObservableObject {
         os_log(.info, log: recordingLog, "Engine invalidated — will rebuild on next recording")
     }
 
-    func cleanup() {
-        if let url = tempFileURL {
-            try? FileManager.default.removeItem(at: url)
-            tempFileURL = nil
+    private func pruneOldRecordings() {
+        let fm = FileManager.default
+        let dir = Self.recordingCacheDir
+        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])
+            .filter({ $0.pathExtension == "wav" })
+            .sorted(by: { a, b in
+                let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return da > db
+            })
+        else { return }
+
+        if files.count > maxRetainedRecordings {
+            for file in files.dropFirst(maxRetainedRecordings) {
+                try? fm.removeItem(at: file)
+                os_log(.info, log: recordingLog, "Pruned old recording: %{public}@", file.lastPathComponent)
+            }
         }
     }
 }

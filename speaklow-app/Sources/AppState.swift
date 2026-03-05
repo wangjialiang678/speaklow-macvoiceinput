@@ -427,7 +427,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 self.isRecording = false
                 self.statusText = "麦克风没有声音"
                 self.errorMessage = "麦克风没有声音"
-                self.audioRecorder.cleanup()
                 NSSound(named: "Basso")?.play()
                 self.overlayManager.showError(
                     title: "麦克风没有声音",
@@ -493,7 +492,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
             viLog("stopStreamingRecording: 录音时长 \(Int(elapsed * 1000))ms < 200ms，丢弃")
             audioRecorder.onStreamingAudioChunk = nil
             _ = audioRecorder.stopRecording()
-            audioRecorder.cleanup()
             recordingStartTime = nil
             recordingDuration = 0
             wavFileURL = nil
@@ -550,7 +548,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         guard let fileURL = audioRecorder.stopRecording() else {
             os_log(.error, log: recordingLog, "stopRecording() returned nil — no audio file")
-            audioRecorder.cleanup()
             errorMessage = "No audio recorded"
             isRecording = false
             statusText = "Error"
@@ -626,8 +623,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         }
                     }
 
-                    self.audioRecorder.cleanup()
-
                     DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                         if self.statusText.hasPrefix("已插入") || self.statusText.hasPrefix("已粘贴") ||
                            self.statusText.hasPrefix("已复制") || self.statusText.hasPrefix("识别失败") ||
@@ -661,7 +656,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         title: errTitle,
                         suggestion: errSuggestion
                     )
-                    self.audioRecorder.cleanup()
                 }
             }
         }
@@ -850,7 +844,6 @@ extension AppState: StreamingTranscriptionDelegate {
             NSSound(named: "Basso")?.play()
             overlayManager.dismissPreviewPanel()
             overlayManager.showError(title: "未检测到语音", suggestion: "请靠近麦克风说话")
-            audioRecorder.cleanup()
             return
         }
 
@@ -874,7 +867,6 @@ extension AppState: StreamingTranscriptionDelegate {
                 )
                 await MainActor.run {
                     self.applyFinalTranscript(syncResult.text, usePreRefined: syncResult.usedFallback)
-                    self.audioRecorder.cleanup()
                 }
             }
         } else {
@@ -882,7 +874,6 @@ extension AppState: StreamingTranscriptionDelegate {
                 viLog("Streaming: skipping qwen3 (duration=\(String(format: "%.0f", duration))s, wavURL=\(wavURL?.path ?? "nil"))")
             }
             applyFinalTranscript(fullText, usePreRefined: true)
-            audioRecorder.cleanup()
         }
     }
 
@@ -1092,7 +1083,6 @@ extension AppState: StreamingTranscriptionDelegate {
             viLog("Streaming: unrecoverable error, stopping recording and showing error")
             _ = audioRecorder.stopRecording()
             isRecording = false
-            audioRecorder.cleanup()
             let (errTitle, errSuggestion) = userFriendlyTranscriptionError(error)
             statusText = errTitle
             errorMessage = error.localizedDescription
