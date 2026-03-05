@@ -11,6 +11,7 @@ speaklow-app/build/
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # Go binary
 asr-bridge/asr-bridge
