@@ -127,10 +127,8 @@ class StreamingTranscriptionService {
                     break
                 }
                 // Continue listening (unless finished/error)
-                if self.isConnected || !self.isConnected {
-                    // Always try to receive next message until we explicitly disconnect
-                    self.receiveMessage()
-                }
+                // Always try to receive next message until we explicitly disconnect
+                self.receiveMessage()
 
             case .failure(let error):
                 self.logger.error("receive failed: \(error.localizedDescription)")

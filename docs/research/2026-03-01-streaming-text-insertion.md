@@ -1,3 +1,11 @@
+---
+title: "流式文本插入方案验证报告"
+date: 2026-03-01
+status: active
+audience: both
+tags: [research]
+---
+
 # 流式文本插入方案 — 实测验证报告
 
 **日期**: 2026-03-01

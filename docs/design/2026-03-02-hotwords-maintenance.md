@@ -1,3 +1,11 @@
+---
+title: "热词表维护方案设计"
+date: 2026-03-02
+status: active
+audience: both
+tags: [design, hotwords]
+---
+
 # 热词表维护方案设计
 
 > **版本**: v1.0 (2026-03-02)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -24,6 +25,7 @@ func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("parse form: %v", err))
 			return
 		}
+		defer r.MultipartForm.RemoveAll()
 
 		file, _, err := r.FormFile("file")
 		if err != nil {
@@ -39,7 +41,7 @@ func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 		}
 
 		start := time.Now()
-		text, err := transcribeWithQwen3(apiKey, audioData)
+		text, err := transcribeWithQwen3(r.Context(), apiKey, audioData)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("transcribe: %v", err))
 			return
@@ -53,7 +55,7 @@ func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 	}
 }
 
-func transcribeWithQwen3(apiKey string, audioData []byte) (string, error) {
+func transcribeWithQwen3(ctx context.Context, apiKey string, audioData []byte) (string, error) {
 	b64 := base64.StdEncoding.EncodeToString(audioData)
 	audioURI := "data:audio/wav;base64," + b64
 
@@ -102,7 +104,7 @@ func transcribeWithQwen3(apiKey string, audioData []byte) (string, error) {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, qwen3ASREndpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, qwen3ASREndpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}

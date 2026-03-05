@@ -6,7 +6,7 @@ Copilot	5	en	zh	扣pai了
 TRAE	5	en	zh
 OpenCode	5	en	zh
 CLI	4	en	zh
-CLAUDE.md	5	en	zh	克劳德点MD
+CLAUDE.md	5	en	zh
 Skills	4	en	zh
 Hooks	4	en	zh
 sub-agent	5	en	zh

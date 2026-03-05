@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -86,8 +87,8 @@ func isAllowedOrigin(origin string) bool {
 		"http://127.0.0.1",
 		"https://127.0.0.1",
 	}
-	for _, prefix := range allowed {
-		if len(origin) >= len(prefix) && origin[:len(prefix)] == prefix {
+	for _, a := range allowed {
+		if origin == a || strings.HasPrefix(origin, a+":") {
 			return true
 		}
 	}

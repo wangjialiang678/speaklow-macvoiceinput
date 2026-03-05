@@ -1,3 +1,11 @@
+---
+title: "SpeakLow 优化实施方案"
+date: 2026-03-05
+status: outdated
+audience: ai
+tags: [design, optimization]
+---
+
 # SpeakLow 优化实施方案
 
 > 文档用途：供 Claude Code 进程直接参照实施。所有描述均基于 2026-03-05 实测数据和代码分析。

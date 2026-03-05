@@ -1,3 +1,11 @@
+---
+title: "AI 独立开发者热词表"
+date: 2026-03-02
+status: active
+audience: human
+tags: [hotwords]
+---
+
 # AI 独立开发者 Vibe Coding 热词表
 
 > 用途: SpeakLow ASR 语音识别热词 / 自定义词汇表

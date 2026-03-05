@@ -52,7 +52,7 @@ class TranscriptionService {
     }
 
     private func transcribeAudio(fileURL: URL) async throws -> String {
-        let url = URL(string: "\(bridgeURL)/v1/transcribe")!
+        let url = URL(string: "\(bridgeURL)/v1/transcribe-sync")!
         os_log(.info, log: transcriptionLog, "POST %{public}@", url.absoluteString)
 
         // Convert to 16kHz 16-bit mono WAV for FunASR

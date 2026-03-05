@@ -27,6 +27,8 @@ const refineEnglishRule = `
 const refinePhoneticRule = `
 【音近技术词纠错】如果出现与英文技术词发音相近的中文，请纠正为正确英文拼写。
 例：千万三→Qwen3，千问→Qwen，克劳德→Claude。
+【文件名/技术标识符还原】语音中"点"在技术上下文里通常指"."，请还原为正确格式。
+例：Claude点md→CLAUDE.md，index点js→index.js，package点json→package.json，点env→.env。
 注意：仅在明显技术上下文中修正，普通中文不要改。`
 
 var refinePrompts = map[string]string{
