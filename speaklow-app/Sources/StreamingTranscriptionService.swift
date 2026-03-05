@@ -34,7 +34,7 @@ class StreamingTranscriptionService {
 
     // MARK: - Public API
 
-    func start(model: String = "paraformer-realtime-v2", sampleRate: Int = 16000) {
+    func start(model: String = "qwen3-asr-flash-realtime", sampleRate: Int = 16000) {
         guard let url = URL(string: "\(bridgeURL)/v1/stream") else {
             delegate?.streamingDidFail(error: StreamingError.invalidURL)
             return

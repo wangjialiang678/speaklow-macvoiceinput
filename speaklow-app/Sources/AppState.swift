@@ -97,8 +97,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let initialAccessibility = AXIsProcessTrusted()
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
-        // LLM refinement defaults: enabled, both modes
-        let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? true
+        // LLM refinement defaults: disabled (qwen3 realtime accuracy is sufficient)
+        let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? false
         let llmMode = RefineMode(rawValue: UserDefaults.standard.string(forKey: "llm_refine_mode") ?? "both") ?? .both
 
         self.hasCompletedSetup = hasCompletedSetup
@@ -852,7 +852,9 @@ extension AppState: StreamingTranscriptionDelegate {
 
         let duration = recordingDuration
         let wavURL = wavFileURL
-        let shouldTryQwen3 = wavURL != nil && duration < 300
+        // Skip qwen3 sync re-transcription when streaming already uses qwen3 (same model family, minimal benefit)
+        let streamModel = UserDefaults.standard.string(forKey: "asr_stream_model") ?? "qwen3-asr-flash-realtime"
+        let shouldTryQwen3 = !streamModel.contains("qwen3") && wavURL != nil && duration < 300
 
         if shouldTryQwen3, let url = wavURL {
             let timeout = min(15.0, max(3.0, duration * 0.3))
