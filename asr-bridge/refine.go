@@ -12,7 +12,7 @@ import (
 
 const (
 	qwenChatURL   = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-	refineModel   = "qwen-turbo-latest"
+	refineModel   = "qwen-flash"
 	refineTimeout = 10 * time.Second
 )
 

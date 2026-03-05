@@ -52,6 +52,8 @@ make all  # 必须编译通过
 | 停止并转写 | 松开 Fn 键 | 波形消失，显示转写中指示器 |
 | 文字插入 | 在文本编辑器中录音 | 识别文字自动插入光标位置 |
 | 插入失败回退 | 在无文本框的应用中 | 提示用户文字已复制到剪贴板 |
+| 粘贴验证 | 在 VS Code 中录音（正常权限） | 粘贴成功，日志 "paste verified OK" |
+| 粘贴权限缺失 | 更新 app 后未重新授权 → 录音 | 日志 "paste verification FAILED"，弹出文本面板+辅助功能设置 |
 | 切换快捷键 | 设置中切换到 F5 | F5 键触发录音 |
 | 退出 | 点击菜单栏 Quit | App 退出，ASR Bridge 进程也结束 |
 
@@ -100,6 +102,31 @@ curl -s http://localhost:18089/health
 
 # 7. 检查日志确认自动重启
 tail -20 ~/Library/Logs/SpeakLow.log | grep -i "restart\|auto\|ensureRunning"
+```
+
+### 2.6 降噪（Voice Processing IO）测试
+
+| 测试项 | 步骤 | 预期 |
+|--------|------|------|
+| 降噪启用确认 | 启动 App → 按快捷键录音 → 检查日志 | 日志包含 "Voice Processing IO 已启用" |
+| 安静环境录音 | 安静房间内正常说话 | 识别文字准确，无异常（降噪不应影响正常语音） |
+| 嘈杂环境录音 | 播放背景噪音（风扇/音乐）→ 说话录音 | 识别准确率优于无降噪时（背景噪音被抑制） |
+| 小声说话 | 距麦克风 30cm+ 小声说话 | 语音仍能被识别，音量级别正常显示 |
+| 波形显示正常 | 降噪开启时录音 | 波形动画仍正常跟随语音，无明显失真 |
+| 降噪启用失败降级 | （模拟）Voice Processing 不可用时 | 日志显示 "启用失败（降级为无降噪）"，录音功能正常 |
+| 切换麦克风后降噪 | 设置中切换麦克风 → 录音 | 引擎重建后降噪仍然启用（日志确认） |
+| Engine 重建后降噪 | 静音超时后 → 再次录音 | 引擎重建后降噪自动重新启用 |
+
+#### 降噪 A/B 对比测试
+
+```bash
+# 1. 检查日志确认 Voice Processing IO 状态
+log stream --predicate 'subsystem == "com.speaklow.app" AND category == "Recording"' | grep -i "voice processing"
+
+# 2. 对比测试流程：
+# a) 在嘈杂环境（播放白噪音或风扇声）中录音，记录识别结果
+# b) 如需对比无降噪效果，临时注释 setVoiceProcessingEnabled 行，重新编译后重复步骤 a
+# c) 对比两次识别结果的准确率
 ```
 
 ## 3. 端到端测试流程

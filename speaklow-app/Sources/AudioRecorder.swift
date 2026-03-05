@@ -139,6 +139,8 @@ class AudioRecorder: NSObject, ObservableObject {
     private var bufferCount: Int = 0
     private var currentDeviceUID: String?
     private var storedInputFormat: AVAudioFormat?
+    /// Voice Processing IO 降噪是否成功启用
+    private(set) var voiceProcessingEnabled = false
 
     @Published var isRecording = false
     /// Thread-safe flag read from the audio tap callback.
@@ -207,6 +209,12 @@ class AudioRecorder: NSObject, ObservableObject {
 
             let inputNode = engine.inputNode
             os_log(.info, log: recordingLog, "inputNode accessed: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+
+            // TODO: Voice Processing IO 降噪暂不启用
+            // 原因：启用后 inputNode 格式变为 48kHz 3ch，AVAudioConverter 转 16kHz mono 时
+            // 产出近零数据（-91dB），导致 ASR 收到静音。需要先修复多声道转换问题。
+            // 备选方案：RNNoise（纯 C 库）或 GTCRN（via sherpa-onnx）
+
             let inputFormat = inputNode.outputFormat(forBus: 0)
             os_log(.info, log: recordingLog, "inputFormat retrieved (rate=%.0f, ch=%d): %.3fms", inputFormat.sampleRate, inputFormat.channelCount, (CFAbsoluteTimeGetCurrent() - t0) * 1000)
             guard inputFormat.sampleRate > 0 else {
@@ -457,6 +465,7 @@ class AudioRecorder: NSObject, ObservableObject {
         smoothedLevel = 0.0
         streamingConverter = nil
         streamingOutputFormat = nil
+        voiceProcessingEnabled = false
         audioFileQueue.sync { self.streamingBuffer.removeAll() }
         onStreamingAudioChunk = nil
         DispatchQueue.main.async { self.audioLevel = 0.0 }

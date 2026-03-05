@@ -57,6 +57,9 @@ class TextInserter {
     private static func pasteViaClipboard(_ text: String) -> InsertResult {
         let previousContents = saveClipboard()
 
+        // 记录粘贴前的文本长度，用于后续验证
+        let beforeLen = readFocusedElementValueLength()
+
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         viLog("TextInserter: text set to clipboard, sending Cmd+V")
@@ -68,10 +71,21 @@ class TextInserter {
         viLog("TextInserter: Cmd+V sent, result=\(pasted)")
 
         if pasted {
-            // Cmd+V 发送成功，信任粘贴结果。
-            // 不做 AX 验证：Electron 应用（VS Code 等）的 AX 值更新有延迟，
-            // 验证几乎永远返回 false，导致误判为粘贴失败。
-            viLog("TextInserter: Cmd+V sent successfully, trusting paste result")
+            // 等待目标 app 处理粘贴事件并更新 AX tree。
+            // Electron app（VS Code 等）AX 值更新较慢，250ms 足够覆盖。
+            Thread.sleep(forTimeInterval: 0.25)
+
+            let afterLen = readFocusedElementValueLength()
+            viLog("TextInserter: paste verify before=\(beforeLen) after=\(afterLen) (expected change of \(text.count))")
+
+            if beforeLen >= 0 && afterLen >= 0 && afterLen == beforeLen {
+                // 文本框值没变化，Cmd+V 可能被 macOS 静默丢弃（权限中间状态）
+                viLog("TextInserter: paste verification FAILED — value unchanged, CGEvent likely dropped")
+                // 不恢复剪贴板，文本留在剪贴板供用户手动粘贴
+                return .copiedToClipboard
+            }
+
+            viLog("TextInserter: paste verified OK")
 
             // 延迟恢复剪贴板，给目标 app 时间处理粘贴
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -82,6 +96,26 @@ class TextInserter {
 
         viLog("TextInserter: paste command failed, text remains in clipboard")
         return .copiedToClipboard
+    }
+
+    /// 读取当前焦点元素的文本值长度，用于粘贴前后对比验证。
+    /// 返回 -1 表示无法读取（无焦点元素或不支持 kAXValueAttribute）。
+    private static func readFocusedElementValueLength() -> Int {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRef
+        ) == .success, let element = focusedRef,
+              CFGetTypeID(element) == AXUIElementGetTypeID() else {
+            return -1
+        }
+        var valueRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element as! AXUIElement, kAXValueAttribute as CFString, &valueRef
+        ) == .success, let value = valueRef as? String else {
+            return -1
+        }
+        return value.count
     }
 
     // MARK: - AX API

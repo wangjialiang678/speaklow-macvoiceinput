@@ -161,6 +161,7 @@ class RecordingOverlayManager {
 
     /// Global key event monitor for detecting ⌘V to auto-dismiss text result panel.
     private var cmdVMonitor: Any?
+    private var clickOutsideMonitor: Any?
 
     /// Height of the notch area (menu bar inset) that the panel extends into.
     private var notchOverlap: CGFloat {
@@ -489,8 +490,9 @@ class RecordingOverlayManager {
 
         self.textResultPanel = panel
 
-        // 监听全局 ⌘V，粘贴后自动关闭面板
+        // 监听全局 ⌘V，粘贴后自动关闭面板；点击面板外也关闭
         _startCmdVMonitor()
+        _startClickOutsideMonitor()
 
         // 安全兜底：30 秒后自动关闭
         let task = DispatchWorkItem { [weak self] in
@@ -517,10 +519,26 @@ class RecordingOverlayManager {
         }
     }
 
+    private func _startClickOutsideMonitor() {
+        _stopClickOutsideMonitor()
+        // 点击其他应用窗口时自动关闭面板
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            DispatchQueue.main.async { self?._dismissTextResult() }
+        }
+    }
+
+    private func _stopClickOutsideMonitor() {
+        if let monitor = clickOutsideMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickOutsideMonitor = nil
+        }
+    }
+
     private func _dismissTextResult() {
         textResultDismissTask?.cancel()
         textResultDismissTask = nil
         _stopCmdVMonitor()
+        _stopClickOutsideMonitor()
         guard let panel = textResultPanel else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.2
