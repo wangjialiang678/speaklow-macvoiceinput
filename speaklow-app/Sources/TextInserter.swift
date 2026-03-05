@@ -67,16 +67,20 @@ class TextInserter {
         let pasted = trySendPasteCommand()
         viLog("TextInserter: Cmd+V sent, result=\(pasted)")
 
-        // Restore clipboard after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            restoreClipboard(previousContents)
-        }
-
         if pasted {
+            // Cmd+V 发送成功，信任粘贴结果。
+            // 不做 AX 验证：Electron 应用（VS Code 等）的 AX 值更新有延迟，
+            // 验证几乎永远返回 false，导致误判为粘贴失败。
+            viLog("TextInserter: Cmd+V sent successfully, trusting paste result")
+
+            // 延迟恢复剪贴板，给目标 app 时间处理粘贴
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                restoreClipboard(previousContents)
+            }
             return .pastedViaClipboard
         }
 
-        viLog("TextInserter: paste failed, text remains in clipboard")
+        viLog("TextInserter: paste command failed, text remains in clipboard")
         return .copiedToClipboard
     }
 

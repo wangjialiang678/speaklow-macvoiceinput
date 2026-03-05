@@ -1,101 +1,101 @@
 # SpeakLow 热词表
-# 格式: 热词<TAB>权重<TAB>语言
-# 权重 1-5，越高越强；语言 zh/en
-Cursor	5	en
-Claude Code	5	en
-Copilot	5	en
-TRAE	5	en
-OpenCode	5	en
-CLI	4	en
-CLAUDE.md	5	en
-Skills	4	en
-Hooks	4	en
-sub-agent	5	en
-MCP	5	en
-worktree	4	en
-context window	4	en
-token	3	en
-system prompt	4	en
-Claude	5	en
-Opus	5	en
-Sonnet	5	en
-GPT	5	en
-Codex	4	en
-Gemini	5	en
-Llama	5	en
-Grok	5	en
-DeepSeek	5	en
+# 格式: 热词<TAB>权重<TAB>src_lang<TAB>target_lang
+# 权重 1-5，越高越强
+Cursor	5	en	zh
+Claude Code	5	en	zh
+Copilot	5	en	zh
+TRAE	5	en	zh
+OpenCode	5	en	zh
+CLI	4	en	zh
+CLAUDE.md	5	en	zh
+Skills	4	en	zh
+Hooks	4	en	zh
+sub-agent	5	en	zh
+MCP	5	en	zh
+worktree	4	en	zh
+context window	4	en	zh
+token	3	en	zh
+system prompt	4	en	zh
+Claude	5	en	zh
+Opus	5	en	zh
+Sonnet	5	en	zh
+GPT	5	en	zh
+Codex	4	en	zh
+Gemini	5	en	zh
+Llama	5	en	zh
+Grok	5	en	zh
+DeepSeek	5	en	zh
 通义千问	5	zh
-Qwen	5	en
-Kimi	5	en
+Qwen	5	en	zh
+Kimi	5	en	zh
 智谱	5	zh
-GLM	5	en
+GLM	5	en	zh
 豆包	5	zh
-MiniMax	5	en
-Anthropic	5	en
-OpenAI	5	en
-Hugging Face	5	en
+MiniMax	5	en	zh
+Anthropic	5	en	zh
+OpenAI	5	en	zh
+Hugging Face	5	en	zh
 百炼	5	zh
 硅基流动	5	zh
 魔搭	5	zh
-Groq	5	en
-vibe coding	5	en
-vibe code	5	en
-prompt	3	en
-prompt engineering	4	en
-PRD	4	en
-MVP	4	en
-code review	4	en
-hallucination	4	en
-fine-tuning	4	en
-chain of thought	4	en
-Agent	4	en
-agentic	4	en
-LangChain	5	en
-Dify	5	en
+Groq	5	en	zh
+vibe coding	5	en	zh
+vibe code	5	en	zh
+prompt	3	en	zh
+prompt engineering	4	en	zh
+PRD	4	en	zh
+MVP	4	en	zh
+code review	4	en	zh
+hallucination	4	en	zh
+fine-tuning	4	en	zh
+chain of thought	4	en	zh
+Agent	4	en	zh
+agentic	4	en	zh
+LangChain	5	en	zh
+Dify	5	en	zh
 扣子	5	zh
-Coze	5	en
-Manus	5	en
-n8n	5	en
-function calling	4	en
-tool use	4	en
-A2A	5	en
-RAG	5	en
-embedding	4	en
-LLM	5	en
+Coze	5	en	zh
+Manus	5	en	zh
+n8n	5	en	zh
+function calling	4	en	zh
+tool use	4	en	zh
+A2A	5	en	zh
+RAG	5	en	zh
+embedding	4	en	zh
+LLM	5	en	zh
 多模态	4	zh
-LoRA	5	en
-transformer	4	en
-React	4	en
-Vue	4	en
-Tailwind	5	en
-FastAPI	5	en
-Supabase	5	en
-Firebase	5	en
-Redis	4	en
-Vercel	5	en
-Cloudflare	5	en
-VS Code	5	en
-Git	3	en
-GitHub	4	en
-pull request	4	en
-npm	4	en
-Node.js	4	en
-Python	3	en
-TypeScript	4	en
-Rust	4	en
-Swift	3	en
-Vite	5	en
-Docker	4	en
-Playwright	5	en
-API	3	en
-SDK	4	en
-JSON	3	en
-WebSocket	5	en
-REST	4	en
-Markdown	4	en
-md	3	en
-ASR	5	en
-TTS	5	en
-Whisper	5	en
-FunASR	5	en
+LoRA	5	en	zh
+transformer	4	en	zh
+React	4	en	zh
+Vue	4	en	zh
+Tailwind	5	en	zh
+FastAPI	5	en	zh
+Supabase	5	en	zh
+Firebase	5	en	zh
+Redis	4	en	zh
+Vercel	5	en	zh
+Cloudflare	5	en	zh
+VS Code	5	en	zh
+Git	3	en	zh
+GitHub	4	en	zh
+pull request	4	en	zh
+npm	4	en	zh
+Node.js	4	en	zh
+Python	3	en	zh
+TypeScript	4	en	zh
+Rust	4	en	zh
+Swift	3	en	zh
+Vite	5	en	zh
+Docker	4	en	zh
+Playwright	5	en	zh
+API	3	en	zh
+SDK	4	en	zh
+JSON	3	en	zh
+WebSocket	5	en	zh
+REST	4	en	zh
+Markdown	4	en	zh
+md	3	en	zh
+ASR	5	en	zh
+TTS	5	en	zh
+Whisper	5	en	zh
+FunASR	5	en	zh

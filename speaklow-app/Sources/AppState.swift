@@ -78,11 +78,18 @@ final class AppState: ObservableObject, @unchecked Sendable {
     // Streaming state
     private var streamingService: StreamingTranscriptionService?
     private var isStreaming = false
+    private var streamingHasFinished = false
     private var committedSentences: [String] = []
+    private var streamingResult: String = ""
+    private var wavFileURL: URL?
+    private var recordingDuration: TimeInterval = 0
+    private var recordingStartTime: Date?
     private var lastPartialText: String = ""
     private var lastPartialChangeTime: Date = Date()
     private var streamingStallTimer: Timer?
     private var safetyTimeoutWork: DispatchWorkItem?
+    private var sentenceRefineCache: [String: String] = [:]
+    private var pendingRefineCount = 0
 
     init() {
         let hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
@@ -273,12 +280,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
         // Always re-check live instead of relying on cached value
         hasAccessibility = AXIsProcessTrusted()
         viLog("AXIsProcessTrusted() = \(hasAccessibility)")
-        guard hasAccessibility else {
-            isRecording = false
-            errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
-            statusText = "No Accessibility"
-            showAccessibilityAlert()
-            return
+        if !hasAccessibility {
+            viLog("AX permission not granted, prompting user")
+            overlayManager.showError(title: "辅助功能权限未授予", suggestion: "请在系统设置中允许 SpeakLow 控制电脑")
+            openAccessibilitySettings()
+            // 不阻断录音，继续录音（权限可能在录音期间被授予）
         }
         guard ensureMicrophoneAccess() else {
             isRecording = false
@@ -375,6 +381,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.streamingService = streaming
         self.isStreaming = true
         self.committedSentences = []
+        self.streamingHasFinished = false
+        self.streamingResult = ""
+        self.wavFileURL = nil
+        self.recordingDuration = 0
+        self.recordingStartTime = nil
+        self.sentenceRefineCache = [:]
+        self.pendingRefineCount = 0
 
         // Set up streaming audio callback
         audioRecorder.onStreamingAudioChunk = { [weak self] chunk in
@@ -392,6 +405,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 guard let self else { return }
                 initTimer.cancel()
                 os_log(.info, log: recordingLog, "first real audio — transitioning to waveform")
+                self.recordingStartTime = Date()
                 self.statusText = "Recording..."
                 if overlayShown {
                     self.overlayManager.transitionToRecording()
@@ -474,8 +488,35 @@ final class AppState: ObservableObject, @unchecked Sendable {
         streamingStallTimer?.invalidate()
         streamingStallTimer = nil
 
+        let elapsed = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0.0
+        if elapsed < 0.2 {
+            viLog("stopStreamingRecording: 录音时长 \(Int(elapsed * 1000))ms < 200ms，丢弃")
+            audioRecorder.onStreamingAudioChunk = nil
+            _ = audioRecorder.stopRecording()
+            audioRecorder.cleanup()
+            recordingStartTime = nil
+            recordingDuration = 0
+            wavFileURL = nil
+            isRecording = false
+            safetyTimeoutWork?.cancel()
+            safetyTimeoutWork = nil
+            streamingHasFinished = true
+            streamingService?.disconnect()
+            streamingService = nil
+            isStreaming = false
+            overlayManager.dismiss()
+            return
+        }
+
+        if let start = recordingStartTime {
+            recordingDuration = Date().timeIntervalSince(start)
+        } else {
+            recordingDuration = 0
+        }
+        recordingStartTime = nil
+
         // Stop recording (flushes remaining audio buffer)
-        _ = audioRecorder.stopRecording()
+        wavFileURL = audioRecorder.stopRecording()
         isRecording = false
 
         // Tell streaming service we're done sending audio
@@ -769,10 +810,23 @@ extension AppState: StreamingTranscriptionDelegate {
         committedSentences.append(text)
         let display = committedSentences.joined()
         overlayManager.updatePreviewText(display)
+
+        guard llmRefineEnabled else { return }
+        pendingRefineCount += 1
+        let mode = llmRefineMode
+        Task {
+            let refined = await TextRefineService.refine(text: text, mode: mode)
+            await MainActor.run {
+                self.sentenceRefineCache[text] = refined
+                self.pendingRefineCount = max(0, self.pendingRefineCount - 1)
+                viLog("Sentence pre-refine done: '\(text.prefix(20))' → '\(refined.prefix(20))'")
+            }
+        }
     }
 
     func streamingDidFinish() {
         guard isStreaming else { return } // Prevent double-fire from safety timeout
+        streamingHasFinished = true
         viLog("Streaming: finished")
 
         isStreaming = false
@@ -785,32 +839,153 @@ extension AppState: StreamingTranscriptionDelegate {
         transcribingIndicatorTask?.cancel()
         transcribingIndicatorTask = nil
 
-        let fullText = committedSentences.joined()
+        var fullText = committedSentences.joined()
+        if fullText.isEmpty && !lastPartialText.isEmpty {
+            viLog("Streaming: no committed sentences but has partial '\(lastPartialText.prefix(40))', using as final")
+            fullText = lastPartialText
+        }
+
         if fullText.isEmpty {
             statusText = "未检测到语音"
             NSSound(named: "Basso")?.play()
             overlayManager.dismissPreviewPanel()
             overlayManager.showError(title: "未检测到语音", suggestion: "请靠近麦克风说话")
-        } else {
-            lastTranscript = fullText
-
-            // Optional LLM refinement, then insert
-            if llmRefineEnabled {
-                overlayManager.updatePreviewText("✨ 正在优化...")
-                viLog("Streaming: starting LLM refine, mode=\(llmRefineMode.rawValue)")
-                let mode = llmRefineMode
-                Task {
-                    let refined = await TextRefineService.refine(text: fullText, mode: mode)
-                    await MainActor.run {
-                        self.insertAndFinish(originalText: fullText, finalText: refined)
-                    }
-                }
-            } else {
-                insertAndFinish(originalText: fullText, finalText: fullText)
-            }
+            audioRecorder.cleanup()
+            return
         }
 
-        audioRecorder.cleanup()
+        // Save streaming result as fallback for sync re-transcribe failure.
+        streamingResult = fullText
+
+        let duration = recordingDuration
+        let wavURL = wavFileURL
+        let shouldTryQwen3 = wavURL != nil && duration < 300
+
+        if shouldTryQwen3, let url = wavURL {
+            let timeout = min(15.0, max(3.0, duration * 0.3))
+            viLog("Streaming: launching qwen3 sync ASR, timeout=\(String(format: "%.1f", timeout))s, duration=\(String(format: "%.1f", duration))s")
+            overlayManager.updatePreviewText("✨ 优化识别中...")
+
+            Task {
+                let syncResult = await self.transcribeSyncWithFallback(
+                    wavURL: url,
+                    fallbackText: self.streamingResult,
+                    timeout: timeout
+                )
+                await MainActor.run {
+                    self.applyFinalTranscript(syncResult.text, usePreRefined: syncResult.usedFallback)
+                    self.audioRecorder.cleanup()
+                }
+            }
+        } else {
+            if !shouldTryQwen3 {
+                viLog("Streaming: skipping qwen3 (duration=\(String(format: "%.0f", duration))s, wavURL=\(wavURL?.path ?? "nil"))")
+            }
+            applyFinalTranscript(fullText, usePreRefined: true)
+            audioRecorder.cleanup()
+        }
+    }
+
+    private func transcribeSyncWithFallback(
+        wavURL: URL,
+        fallbackText: String,
+        timeout: TimeInterval
+    ) async -> (text: String, usedFallback: Bool) {
+        let bridgeURL = URL(string: "http://127.0.0.1:18089/v1/transcribe-sync")!
+
+        do {
+            let data = try Data(contentsOf: wavURL)
+            let result = try await withTimeout(seconds: timeout) {
+                try await self.postMultipartAudio(to: bridgeURL, audioData: data)
+            }
+            if let text = result?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                viLog("qwen3 sync: got '\(text.prefix(40))' (used qwen3 result)")
+                return (text, false)
+            }
+        } catch {
+            viLog("qwen3 sync: failed or timeout: \(error.localizedDescription), using streaming fallback")
+        }
+
+        return (fallbackText, true)
+    }
+
+    private func postMultipartAudio(to url: URL, audioData: Data) async throws -> String? {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+        body.append(audioData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(
+                domain: "TranscribeSync",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid HTTP response"]
+            )
+        }
+        guard http.statusCode == 200 else {
+            let detail = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "TranscribeSync",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(detail)"]
+            )
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return json?["text"] as? String
+    }
+
+    private func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @Sendable @escaping () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw CancellationError()
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func applyFinalTranscript(_ text: String, usePreRefined: Bool = false) {
+        lastTranscript = text
+
+        if llmRefineEnabled {
+            if usePreRefined && !sentenceRefineCache.isEmpty {
+                let refined = committedSentences.map { sentenceRefineCache[$0] ?? $0 }.joined()
+                if !refined.isEmpty {
+                    viLog("applyFinalTranscript: using pre-refined sentences, pending=\(pendingRefineCount)")
+                    insertAndFinish(originalText: text, finalText: refined)
+                    return
+                }
+            }
+
+            overlayManager.updatePreviewText("✨ 正在优化...")
+            viLog("applyFinalTranscript: starting LLM refine, mode=\(llmRefineMode.rawValue)")
+            let mode = llmRefineMode
+            Task {
+                let refined = await TextRefineService.refine(text: text, mode: mode)
+                await MainActor.run {
+                    self.insertAndFinish(originalText: text, finalText: refined)
+                }
+            }
+        } else {
+            insertAndFinish(originalText: text, finalText: text)
+        }
     }
 
     /// Shared insertion logic for both streaming and batch paths.
@@ -891,6 +1066,11 @@ extension AppState: StreamingTranscriptionDelegate {
     }
 
     func streamingDidFail(error: Error) {
+        guard !streamingHasFinished else {
+            viLog("Streaming: close callback after finish, ignoring")
+            return
+        }
+
         viLog("Streaming FAILED: \(error.localizedDescription), falling back to batch mode")
 
         isStreaming = false

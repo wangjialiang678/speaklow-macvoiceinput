@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	defaultPort      = "18089"
-	defaultModel     = "paraformer-realtime-v2"
+	defaultPort       = "18089"
+	defaultModel      = "paraformer-realtime-v2"
 	defaultSampleRate = 16000
-	defaultFormat    = "wav"
-	maxUploadSize    = 50 << 20 // 50 MB
+	defaultFormat     = "wav"
+	maxUploadSize     = 50 << 20 // 50 MB
 )
 
 func main() {
@@ -30,6 +30,7 @@ func main() {
 	}
 
 	initHotwords(apiKey)
+	initQwen3Hotwords()
 
 	port := os.Getenv("ASR_BRIDGE_PORT")
 	if port == "" {
@@ -39,6 +40,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/v1/transcribe", transcribeHandler(apiKey))
+	mux.HandleFunc("/v1/transcribe-sync", transcribeSyncHandler(apiKey))
 	mux.HandleFunc("/v1/stream", streamHandler(apiKey))
 	mux.HandleFunc("/v1/refine", refineHandler(apiKey))
 

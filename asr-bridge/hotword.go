@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/michael/audio-asr-suite/go/audio-asr-go/pkg/hotword"
@@ -22,11 +25,26 @@ func initHotwords(apiKey string) {
 	}
 	log.Printf("[hotword] found hotwords.txt at %s", hotwordsPath)
 
+	cachedID := loadCachedVocabularyID()
+	currentHash, hashErr := computeFileHash(hotwordsPath)
+	cachedHash := loadCachedHash()
+
+	if cachedID != "" && hashErr == nil && currentHash == cachedHash {
+		vocabularyID = cachedID
+		log.Printf("[hotword] reusing cached vocabularyID=%s (hotwords unchanged)", vocabularyID)
+		return
+	}
+
 	manager, err := hotword.NewManager(hotword.ManagerOptions{
 		APIKey: apiKey,
 	})
 	if err != nil {
-		log.Printf("[hotword] create manager failed: %v", err)
+		if cachedID != "" {
+			vocabularyID = cachedID
+			log.Printf("[hotword] manager init failed (%v), using cached vocabularyID=%s", err, vocabularyID)
+		} else {
+			log.Printf("[hotword] create manager failed: %v, no cache available", err)
+		}
 		return
 	}
 
@@ -48,6 +66,10 @@ func initHotwords(apiKey string) {
 			log.Printf("[hotword] replace hotwords failed: %v (keeping old words)", err)
 		} else {
 			log.Printf("[hotword] updated hotwords in table %s", vocabularyID)
+			saveCachedVocabularyID(vocabularyID)
+			if hashErr == nil {
+				saveCachedHash(currentHash)
+			}
 		}
 		return
 	}
@@ -69,6 +91,57 @@ func initHotwords(apiKey string) {
 	}
 	vocabularyID = table.VocabularyID
 	log.Printf("[hotword] created new table: %s (%d words)", vocabularyID, len(words))
+	saveCachedVocabularyID(vocabularyID)
+	if hashErr == nil {
+		saveCachedHash(currentHash)
+	}
+}
+
+func vocabularyIDCachePath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "speaklow", "vocabulary_id")
+}
+
+func loadCachedVocabularyID() string {
+	data, err := os.ReadFile(vocabularyIDCachePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func saveCachedVocabularyID(id string) {
+	path := vocabularyIDCachePath()
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	_ = os.WriteFile(path, []byte(id), 0o600)
+}
+
+func hotwordsHashCachePath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "speaklow", "hotwords_hash")
+}
+
+func computeFileHash(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum), nil
+}
+
+func loadCachedHash() string {
+	data, err := os.ReadFile(hotwordsHashCachePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func saveCachedHash(hash string) {
+	path := hotwordsHashCachePath()
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	_ = os.WriteFile(path, []byte(hash), 0o600)
 }
 
 func findHotwordsFile() string {

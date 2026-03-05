@@ -121,6 +121,8 @@ enum AudioRecorderError: LocalizedError {
 }
 
 class AudioRecorder: NSObject, ObservableObject {
+    private let streamingSampleRate: Double = 16000
+    private let streamingChannels: AVAudioChannelCount = 1
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var tempFileURL: URL?
@@ -146,7 +148,7 @@ class AudioRecorder: NSObject, ObservableObject {
     var onStreamingAudioChunk: ((Data) -> Void)?
     private var readyFired = false
     private var silenceTimer: DispatchSourceTimer?
-    // Streaming PCM conversion
+    // Streaming PCM conversion / 16kHz WAV persistence
     private var streamingConverter: AVAudioConverter?
     private var streamingOutputFormat: AVAudioFormat?
     private var streamingBuffer = Data()
@@ -210,7 +212,7 @@ class AudioRecorder: NSObject, ObservableObject {
             storedInputFormat = inputFormat
 
             // Set up streaming converter (native format → 16kHz mono int16)
-            if let outFmt = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true) {
+            if let outFmt = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: streamingSampleRate, channels: streamingChannels, interleaved: true) {
                 self.streamingOutputFormat = outFmt
                 self.streamingConverter = AVAudioConverter(from: inputFormat, to: outFmt)
                 self.streamingBuffer = Data()
@@ -248,20 +250,9 @@ class AudioRecorder: NSObject, ObservableObject {
                     self.onRecordingReady?()
                 }
 
-                self.audioFileQueue.sync {
-                    if let file = self.audioFile {
-                        do {
-                            try file.write(from: buffer)
-                        } catch {
-                            self.audioFile = nil
-                        }
-                    }
-                }
-
-                // Streaming: convert to 16kHz mono PCM and deliver in 3200-byte chunks
+                // Streaming: convert to 16kHz mono PCM, write WAV, and deliver 3200-byte chunks
                 if let converter = self.streamingConverter,
-                   let outFmt = self.streamingOutputFormat,
-                   let onChunk = self.onStreamingAudioChunk {
+                   let outFmt = self.streamingOutputFormat {
                     let ratio = outFmt.sampleRate / inputFormat.sampleRate
                     let outFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
                     if let outBuf = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: outFrameCount) {
@@ -273,11 +264,28 @@ class AudioRecorder: NSObject, ObservableObject {
                         if status == .haveData, let int16Ptr = outBuf.int16ChannelData {
                             let byteCount = Int(outBuf.frameLength) * 2
                             let pcmData = Data(bytes: int16Ptr[0], count: byteCount)
-                            self.streamingBuffer.append(pcmData)
-                            while self.streamingBuffer.count >= self.streamingChunkSize {
-                                let chunk = self.streamingBuffer.prefix(self.streamingChunkSize)
-                                onChunk(Data(chunk))
-                                self.streamingBuffer.removeFirst(self.streamingChunkSize)
+
+                            // 收集待发送的 chunk，在锁外回调避免持锁时执行耗时操作
+                            var chunksToDeliver: [Data] = []
+                            self.audioFileQueue.sync {
+                                if let file = self.audioFile {
+                                    do {
+                                        try file.write(from: outBuf)
+                                    } catch {
+                                        self.audioFile = nil
+                                    }
+                                }
+                                self.streamingBuffer.append(pcmData)
+                                while self.streamingBuffer.count >= self.streamingChunkSize {
+                                    let chunk = self.streamingBuffer.prefix(self.streamingChunkSize)
+                                    chunksToDeliver.append(Data(chunk))
+                                    self.streamingBuffer.removeFirst(self.streamingChunkSize)
+                                }
+                            }
+
+                            // 锁外回调
+                            for chunk in chunksToDeliver {
+                                self.onStreamingAudioChunk?(chunk)
                             }
                         }
                     }
@@ -304,32 +312,34 @@ class AudioRecorder: NSObject, ObservableObject {
             throw AudioRecorderError.invalidInputFormat("No stored input format")
         }
 
+        if let outFmt = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: streamingSampleRate, channels: streamingChannels, interleaved: true) {
+            self.streamingOutputFormat = outFmt
+            self.streamingConverter = AVAudioConverter(from: inputFormat, to: outFmt)
+            audioFileQueue.sync { self.streamingBuffer.removeAll() }
+        } else {
+            throw AudioRecorderError.invalidInputFormat("Failed to create 16kHz output format")
+        }
+
         // Create a temp file to write audio to
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent(UUID().uuidString + ".wav")
         self.tempFileURL = fileURL
 
-        // Try the input format first to avoid conversion issues, then fall back to 16-bit PCM.
-        let newAudioFile: AVAudioFile
-        do {
-            newAudioFile = try AVAudioFile(forWriting: fileURL, settings: inputFormat.settings)
-        } catch {
-            let fallbackSettings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: inputFormat.sampleRate,
-                AVNumberOfChannelsKey: inputFormat.channelCount,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false,
-                AVLinearPCMIsNonInterleaved: inputFormat.isInterleaved ? 0 : 1,
-            ]
-            newAudioFile = try AVAudioFile(
-                forWriting: fileURL,
-                settings: fallbackSettings,
-                commonFormat: .pcmFormatInt16,
-                interleaved: inputFormat.isInterleaved
-            )
-        }
+        let wavSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: streamingSampleRate,
+            AVNumberOfChannelsKey: streamingChannels,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ]
+        let newAudioFile = try AVAudioFile(
+            forWriting: fileURL,
+            settings: wavSettings,
+            commonFormat: .pcmFormatInt16,
+            interleaved: true
+        )
         os_log(.info, log: recordingLog, "audio file created: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
 
         audioFileQueue.sync { self.audioFile = newAudioFile }
@@ -365,10 +375,16 @@ class AudioRecorder: NSObject, ObservableObject {
         smoothedLevel = 0.0
         DispatchQueue.main.async { self.audioLevel = 0.0 }
 
-        // Flush remaining streaming buffer
-        if let onChunk = onStreamingAudioChunk, !streamingBuffer.isEmpty {
-            onChunk(streamingBuffer)
-            streamingBuffer.removeAll()
+        // Flush remaining streaming buffer（在锁内读取并清空，锁外回调）
+        var remaining = Data()
+        audioFileQueue.sync {
+            if !self.streamingBuffer.isEmpty {
+                remaining = self.streamingBuffer
+                self.streamingBuffer.removeAll()
+            }
+        }
+        if !remaining.isEmpty {
+            onStreamingAudioChunk?(remaining)
         }
 
         // Stop engine so mic indicator goes away — keep engine object for fast restart
@@ -431,7 +447,7 @@ class AudioRecorder: NSObject, ObservableObject {
         smoothedLevel = 0.0
         streamingConverter = nil
         streamingOutputFormat = nil
-        streamingBuffer.removeAll()
+        audioFileQueue.sync { self.streamingBuffer.removeAll() }
         onStreamingAudioChunk = nil
         DispatchQueue.main.async { self.audioLevel = 0.0 }
         os_log(.info, log: recordingLog, "Engine invalidated — will rebuild on next recording")

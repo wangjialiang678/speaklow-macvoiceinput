@@ -159,6 +159,9 @@ class RecordingOverlayManager {
         DispatchQueue.main.async { self._dismissTextResult() }
     }
 
+    /// Global key event monitor for detecting ⌘V to auto-dismiss text result panel.
+    private var cmdVMonitor: Any?
+
     /// Height of the notch area (menu bar inset) that the panel extends into.
     private var notchOverlap: CGFloat {
         guard let screen = NSScreen.main else { return 0 }
@@ -458,23 +461,12 @@ class RecordingOverlayManager {
 
         textResultState = TextResultState()
         textResultState.text = text
-        textResultState.onCopy = { [weak self] in
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            // Auto-dismiss 1.5s after copy
-            self?.textResultDismissTask?.cancel()
-            let task = DispatchWorkItem { [weak self] in
-                self?._dismissTextResult()
-            }
-            self?.textResultDismissTask = task
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: task)
-        }
 
         let panelWidth = previewPanelWidth
         let panelHeight: CGFloat = 120
 
         let panel = makeOverlayPanel(width: panelWidth, height: panelHeight)
-        panel.ignoresMouseEvents = false  // Need clicks for "复制" button
+        panel.ignoresMouseEvents = false  // 允许文字选择
 
         let view = TextResultView(state: textResultState)
         let hosting = NSHostingView(rootView: view)
@@ -497,17 +489,38 @@ class RecordingOverlayManager {
 
         self.textResultPanel = panel
 
-        // Auto-dismiss after 15 seconds if user doesn't interact
+        // 监听全局 ⌘V，粘贴后自动关闭面板
+        _startCmdVMonitor()
+
+        // 安全兜底：30 秒后自动关闭
         let task = DispatchWorkItem { [weak self] in
             self?._dismissTextResult()
         }
         textResultDismissTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0, execute: task)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0, execute: task)
+    }
+
+    private func _startCmdVMonitor() {
+        _stopCmdVMonitor()
+        // keyCode 9 = V, .maskCommand = ⌘
+        cmdVMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 9 && event.modifierFlags.contains(.command) {
+                DispatchQueue.main.async { self?._dismissTextResult() }
+            }
+        }
+    }
+
+    private func _stopCmdVMonitor() {
+        if let monitor = cmdVMonitor {
+            NSEvent.removeMonitor(monitor)
+            cmdVMonitor = nil
+        }
     }
 
     private func _dismissTextResult() {
         textResultDismissTask?.cancel()
         textResultDismissTask = nil
+        _stopCmdVMonitor()
         guard let panel = textResultPanel else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.2
@@ -688,15 +701,13 @@ struct ErrorOverlayView: View {
 
 class TextResultState: ObservableObject {
     @Published var text: String = ""
-    @Published var copied: Bool = false
-    var onCopy: (() -> Void)?
 }
 
 struct TextResultView: View {
     @ObservedObject var state: TextResultState
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             ScrollView(.vertical, showsIndicators: false) {
                 Text(state.text)
                     .font(.system(size: 14))
@@ -708,26 +719,15 @@ struct TextResultView: View {
                     .textSelection(.enabled)
             }
 
-            Button(action: {
-                state.onCopy?()
-                state.copied = true
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: state.copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 11))
-                    Text(state.copied ? "已复制" : "复制")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundColor(state.copied ? .green : .white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule()
-                        .fill(Color.white.opacity(state.copied ? 0.08 : 0.15))
-                )
+            // 底部提示：文字已在剪贴板，按 ⌘V 粘贴即可
+            HStack(spacing: 4) {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 10))
+                Text("文字已复制，按 ⌘V 粘贴")
+                    .font(.system(size: 11))
             }
-            .buttonStyle(.plain)
-            .padding(.bottom, 10)
+            .foregroundColor(.white.opacity(0.5))
+            .padding(.vertical, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
