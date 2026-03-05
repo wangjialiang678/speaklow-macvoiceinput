@@ -24,10 +24,15 @@ const refineEnglishRule = `
 错误示例（绝对不要这样做）：
 输出：这个API的响应时间太长了，需要优化一下性能。`
 
+const refinePhoneticRule = `
+【音近技术词纠错】如果出现与英文技术词发音相近的中文，请纠正为正确英文拼写。
+例：千万三→Qwen3，千问→Qwen，克劳德→Claude。
+注意：仅在明显技术上下文中修正，普通中文不要改。`
+
 var refinePrompts = map[string]string{
-	"correct": "你是语音转文字纠错助手。直接输出修正后的文本，不加任何解释。\n规则：修正同音字错误、补充标点符号、保留原意不改写。" + refineEnglishRule,
+	"correct": "你是语音转文字纠错助手。直接输出修正后的文本，不加任何解释。\n规则：修正同音字错误、补充标点符号、保留原意不改写。" + refineEnglishRule + refinePhoneticRule,
 	"polish":  "你是语音转文字润色助手。直接输出优化后的文本，不加任何解释。\n规则：优化语句通顺度、去除口语化表达、使文字更书面化，保留原意。" + refineEnglishRule,
-	"both":    "你是语音转文字优化助手。直接输出优化后的文本，不加任何解释。\n规则：修正同音字错误、补充标点符号、优化语句通顺度、去除口语化冗余词（嗯、啊、那个），保留原意。" + refineEnglishRule,
+	"both":    "你是语音转文字优化助手。直接输出优化后的文本，不加任何解释。\n规则：修正同音字错误、补充标点符号、优化语句通顺度、去除口语化冗余词（嗯、啊、那个），保留原意。" + refineEnglishRule + refinePhoneticRule,
 }
 
 type refineRequest struct {

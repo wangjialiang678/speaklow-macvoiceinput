@@ -1,13 +1,12 @@
 # SpeakLow 热词表
-# 格式: 热词<TAB>权重<TAB>src_lang<TAB>target_lang
-# 权重 1-5，越高越强
+# 格式: 热词<TAB>权重<TAB>src_lang<TAB>target_lang<TAB>音近提示(可选)
 Cursor	5	en	zh
-Claude Code	5	en	zh
-Copilot	5	en	zh
+Claude Code	5	en	zh	克劳德扣的
+Copilot	5	en	zh	扣pai了
 TRAE	5	en	zh
 OpenCode	5	en	zh
 CLI	4	en	zh
-CLAUDE.md	5	en	zh
+CLAUDE.md	5	en	zh	克劳德点MD
 Skills	4	en	zh
 Hooks	4	en	zh
 sub-agent	5	en	zh
@@ -16,29 +15,29 @@ worktree	4	en	zh
 context window	4	en	zh
 token	3	en	zh
 system prompt	4	en	zh
-Claude	5	en	zh
-Opus	5	en	zh
-Sonnet	5	en	zh
+Claude	5	en	zh	克劳德
+Opus	5	en	zh	欧帕斯
+Sonnet	5	en	zh	索纳特
 GPT	5	en	zh
-Codex	4	en	zh
-Gemini	5	en	zh
-Llama	5	en	zh
-Grok	5	en	zh
-DeepSeek	5	en	zh
+Codex	4	en	zh	扣德克斯
+Gemini	5	en	zh	杰米尼
+Llama	5	en	zh	拉马
+Grok	5	en	zh	格罗克
+DeepSeek	5	en	zh	迪普西克
 通义千问	5	zh
-Qwen	5	en	zh
+Qwen	5	en	zh	千问/千万
 Kimi	5	en	zh
 智谱	5	zh
 GLM	5	en	zh
 豆包	5	zh
 MiniMax	5	en	zh
-Anthropic	5	en	zh
+Anthropic	5	en	zh	安斯罗皮克
 OpenAI	5	en	zh
 Hugging Face	5	en	zh
 百炼	5	zh
 硅基流动	5	zh
 魔搭	5	zh
-Groq	5	en	zh
+Groq	5	en	zh	格罗克
 vibe coding	5	en	zh
 vibe code	5	en	zh
 prompt	3	en	zh
@@ -51,11 +50,11 @@ fine-tuning	4	en	zh
 chain of thought	4	en	zh
 Agent	4	en	zh
 agentic	4	en	zh
-LangChain	5	en	zh
-Dify	5	en	zh
+LangChain	5	en	zh	朗链
+Dify	5	en	zh	迪飞
 扣子	5	zh
 Coze	5	en	zh
-Manus	5	en	zh
+Manus	5	en	zh	马努斯
 n8n	5	en	zh
 function calling	4	en	zh
 tool use	4	en	zh
@@ -64,7 +63,7 @@ RAG	5	en	zh
 embedding	4	en	zh
 LLM	5	en	zh
 多模态	4	zh
-LoRA	5	en	zh
+LoRA	5	en	zh	罗拉
 transformer	4	en	zh
 React	4	en	zh
 Vue	4	en	zh
@@ -73,7 +72,7 @@ FastAPI	5	en	zh
 Supabase	5	en	zh
 Firebase	5	en	zh
 Redis	4	en	zh
-Vercel	5	en	zh
+Vercel	5	en	zh	佛赛尔
 Cloudflare	5	en	zh
 VS Code	5	en	zh
 Git	3	en	zh
@@ -99,3 +98,7 @@ ASR	5	en	zh
 TTS	5	en	zh
 Whisper	5	en	zh
 FunASR	5	en	zh
+Qwen3	5	en	zh	千问三/千万三
+qwen3-asr	5	en	zh	千万三ASR
+paraformer	5	en	zh	帕拉佛墨
+DashScope	5	en	zh	达世扣普

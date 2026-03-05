@@ -8,32 +8,10 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 )
 
 const qwen3ASREndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
-
-// qwen3Hotwords is loaded from hotwords.txt at startup and used as qwen3 system corpus.
-var qwen3Hotwords string
-
-func initQwen3Hotwords() {
-	path := findHotwordsFile()
-	if path == "" {
-		return
-	}
-
-	words, err := loadHotwordsFromFile(path)
-	if err != nil {
-		return
-	}
-
-	var names []string
-	for _, w := range words {
-		names = append(names, w.Text)
-	}
-	qwen3Hotwords = strings.Join(names, ", ")
-}
 
 func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
