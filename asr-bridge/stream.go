@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -58,21 +57,12 @@ func streamHandler(apiKey string) http.HandlerFunc {
 
 		var clientWriteMu sync.Mutex
 
-		startMsg, err := waitClientStart(clientConn)
-		if err != nil {
+		if _, err := waitClientStart(clientConn); err != nil {
 			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: err.Error()})
 			return
 		}
 
-		model := strings.TrimSpace(startMsg.Model)
-		if model == "" {
-			model = strings.TrimSpace(os.Getenv("ASR_MODEL"))
-		}
-		if model == "" {
-			model = defaultModel
-		}
-
-		dashConn, err := dialDashScopeWS(apiKey, model)
+		dashConn, err := dialDashScopeWS(apiKey)
 		if err != nil {
 			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: fmt.Sprintf("connect dashscope: %v", err)})
 			return
@@ -140,9 +130,9 @@ func waitClientStart(clientConn *websocket.Conn) (clientMsg, error) {
 	return msg, nil
 }
 
-func dialDashScopeWS(apiKey, model string) (*websocket.Conn, error) {
+func dialDashScopeWS(apiKey string) (*websocket.Conn, error) {
 	q := url.Values{}
-	q.Set("model", model)
+	q.Set("model", "qwen3-asr-flash-realtime")
 
 	u := dashscopeWSBaseURL + "?" + q.Encode()
 	headers := http.Header{}
