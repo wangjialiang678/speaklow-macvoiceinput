@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -212,6 +214,7 @@ func setupSession(clientConn *websocket.Conn, clientWriteMu *sync.Mutex, dashCon
 
 func relayClientAudio(clientConn, dashConn *websocket.Conn, dashWriteMu *sync.Mutex) error {
 	seq := 0
+	speechStarted := false // once true, all audio is forwarded
 
 	for {
 		clientConn.SetReadDeadline(time.Now().Add(streamTimeout))
@@ -237,6 +240,22 @@ func relayClientAudio(clientConn, dashConn *websocket.Conn, dashWriteMu *sync.Mu
 			if err != nil {
 				continue
 			}
+			// Skip silent frames before speech starts to prevent ASR hallucination
+			// Skip silent frames before speech starts to prevent ASR hallucination.
+			// Env noise ~15-20 RMS, soft speech ~100+, normal speech ~300+.
+			rms := pcmRMS(pcm)
+			if !speechStarted {
+				if seq%50 == 0 {
+					log.Printf("[stream] pre-speech RMS=%.0f", rms)
+				}
+				seq++
+				if rms < 150 {
+					continue
+				}
+				speechStarted = true
+				log.Printf("[stream] speech detected (RMS=%.0f), start forwarding audio", rms)
+				seq = 0
+			}
 			payload := map[string]any{
 				"event_id": newEventID(fmt.Sprintf("audio_%d", seq)),
 				"type":     "input_audio_buffer.append",
@@ -259,7 +278,47 @@ func relayClientAudio(clientConn, dashConn *websocket.Conn, dashWriteMu *sync.Mu
 	}
 }
 
+// pcmRMS calculates the root mean square of PCM16 little-endian audio samples.
+// Typical values: silence ~50-200, speech ~500-5000+.
+func pcmRMS(pcm []byte) float64 {
+	n := len(pcm) / 2
+	if n == 0 {
+		return 0
+	}
+	var sumSq float64
+	for i := 0; i < n; i++ {
+		sample := int16(binary.LittleEndian.Uint16(pcm[i*2 : i*2+2]))
+		sumSq += float64(sample) * float64(sample)
+	}
+	return math.Sqrt(sumSq / float64(n))
+}
+
+// isCorpusLeak returns true if the text looks like a leaked hotword corpus prompt
+// rather than actual user speech. qwen3-asr-flash-realtime will "transcribe" the
+// corpus.text from session config when the user is silent — the model treats the
+// prompt as text to read back. Verified: stash field contains the corpus content
+// verbatim, growing character by character, with text="" (no confirmed speech).
+func isCorpusLeak(s string) bool {
+	return strings.Contains(s, "本次对话涉及") || strings.Contains(s, "专有名词可能出现")
+}
+
+// isFillerOnly returns true if the text consists solely of common ASR filler words
+// produced by background noise / silence (e.g. "嗯", "嗯。", "啊。").
+func isFillerOnly(s string) bool {
+	s = strings.TrimSpace(s)
+	for _, r := range s {
+		switch r {
+		case '嗯', '啊', '呃', '哦', '唔', '。', '，', '.', ',', ' ':
+			continue
+		default:
+			return false
+		}
+	}
+	return s != ""
+}
+
 func relayDashscopeEvents(clientConn *websocket.Conn, clientWriteMu *sync.Mutex, dashConn *websocket.Conn) error {
+	hasRealSpeech := false
 	for {
 		dashConn.SetReadDeadline(time.Now().Add(streamTimeout))
 		_, raw, err := dashConn.ReadMessage()
@@ -276,18 +335,40 @@ func relayDashscopeEvents(clientConn *websocket.Conn, clientWriteMu *sync.Mutex,
 		}
 
 		eventType := getString(event, "type")
+		eventData := string(raw)
+		// Debug: log non-partial events with truncated raw content
+		if eventType != "conversation.item.input_audio_transcription.text" {
+			log.Printf("[Stream] DashScope event: %.100s...", eventData)
+		}
 		switch eventType {
 		case "conversation.item.input_audio_transcription.text":
-			transcript := strings.TrimSpace(getString(event, "transcript"))
-			if transcript != "" {
-				if err := writeBridgeMsg(clientConn, clientWriteMu, bridgeMsg{Type: "partial", Text: transcript}); err != nil {
+			// qwen3-asr-flash-realtime: interim text in "stash", confirmed text in "text"
+			transcript := strings.TrimSpace(getString(event, "stash"))
+			confirmed := strings.TrimSpace(getString(event, "text"))
+			display := confirmed + transcript
+			// Detect corpus text appearing as transcription — log truncated event for diagnosis
+			if isCorpusLeak(display) {
+				log.Printf("[stream] CORPUS LEAK in partial! confirmed=%q stash=%q raw=%.100s...", confirmed, transcript, eventData)
+				continue
+			}
+			if display != "" {
+				// Suppress filler words (嗯/啊/呃) from silence until real speech arrives
+				if !hasRealSpeech && isFillerOnly(display) {
+					continue
+				}
+				hasRealSpeech = true
+				if err := writeBridgeMsg(clientConn, clientWriteMu, bridgeMsg{Type: "partial", Text: display}); err != nil {
 					return fmt.Errorf("write partial: %w", err)
 				}
 			}
 
 		case "conversation.item.input_audio_transcription.completed":
 			transcript := strings.TrimSpace(getString(event, "transcript"))
-			if transcript != "" {
+			if isCorpusLeak(transcript) {
+				log.Printf("[stream] CORPUS LEAK in completed! transcript=%q raw=%.100s...", transcript, eventData)
+				continue
+			}
+			if transcript != "" && !isFillerOnly(transcript) {
 				if err := writeBridgeMsg(clientConn, clientWriteMu, bridgeMsg{Type: "final", Text: transcript, SentenceEnd: true}); err != nil {
 					return fmt.Errorf("write final: %w", err)
 				}

@@ -24,6 +24,11 @@ func viLog(_ message: String) {
     NSLog("[SpeakLow] %@", message)
 }
 
+/// 检测 DashScope ASR 在静默时回传的 corpus.text（热词提示文本）
+func isCorpusLeak(_ text: String) -> Bool {
+    text.contains("本次对话涉及") || text.contains("专有名词可能出现")
+}
+
 final class AppState: ObservableObject, @unchecked Sendable {
     private let selectedMicrophoneStorageKey = "selected_microphone_id"
     private let transcribingIndicatorDelay: TimeInterval = 1.0
@@ -97,8 +102,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let initialAccessibility = AXIsProcessTrusted()
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
-        // LLM refinement defaults: disabled (qwen3 realtime accuracy is sufficient)
-        let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? false
+        // LLM refinement defaults: enabled
+        let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? true
         let llmMode = RefineMode(rawValue: UserDefaults.standard.string(forKey: "llm_refine_mode") ?? "both") ?? .both
 
         self.hasCompletedSetup = hasCompletedSetup
@@ -719,15 +724,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
         return ("出了点问题", "请重试，如果反复出现请重启应用")
     }
 
-    // MARK: - Notifications
-
-    private func showNotification(title: String, body: String) {
-        let notification = NSUserNotification()
-        notification.title = title
-        notification.informativeText = body
-        NSUserNotificationCenter.default.deliver(notification)
-    }
-
     // MARK: - Alerts
 
     func showMicrophonePermissionAlert() {
@@ -788,6 +784,8 @@ extension AppState: StreamingTranscriptionDelegate {
     }
 
     func streamingDidReceivePartial(text: String) {
+        // 拦截 corpus leak：DashScope 在静默时会把 session config 中的热词提示文本回传
+        if isCorpusLeak(text) { return }
         viLog("Streaming partial: \(text.prefix(40))")
         let display = committedSentences.joined() + text
         overlayManager.updatePreviewText(display)
@@ -800,6 +798,7 @@ extension AppState: StreamingTranscriptionDelegate {
     }
 
     func streamingDidReceiveSentence(text: String) {
+        if isCorpusLeak(text) { return }
         viLog("Streaming sentence_end: '\(text.prefix(40))'")
         committedSentences.append(text)
         let display = committedSentences.joined()
