@@ -82,6 +82,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var lastPartialText: String = ""
     private var lastPartialChangeTime: Date = Date()
     private var streamingStallTimer: Timer?
+    private var safetyTimeoutWork: DispatchWorkItem?
 
     init() {
         let hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
@@ -266,12 +267,19 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         let t0 = CFAbsoluteTimeGetCurrent()
         viLog("startRecording() entered")
-
-        // Update AX status for UI, but don't block recording.
-        // AX only affects text insertion method; TextInserter has clipboard fallback.
+        // Cancel any leftover safety timeout from a previous session
+        safetyTimeoutWork?.cancel()
+        safetyTimeoutWork = nil
+        // Always re-check live instead of relying on cached value
         hasAccessibility = AXIsProcessTrusted()
         viLog("AXIsProcessTrusted() = \(hasAccessibility)")
-
+        guard hasAccessibility else {
+            isRecording = false
+            errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
+            statusText = "No Accessibility"
+            showAccessibilityAlert()
+            return
+        }
         guard ensureMicrophoneAccess() else {
             isRecording = false
             return
@@ -481,11 +489,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
         statusText = "正在完成..."
 
         // Safety timeout: if streamingDidFinish doesn't fire within 5s, force-finish
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+        safetyTimeoutWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
             guard let self, self.isStreaming else { return }
             viLog("stopStreamingRecording: safety timeout — force-finishing streaming session")
             self.streamingDidFinish()
         }
+        safetyTimeoutWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
     }
 
     // MARK: - Transcription
@@ -822,11 +833,18 @@ extension AppState: StreamingTranscriptionDelegate {
         case .copiedToClipboard:
             statusText = "已复制到剪贴板（请手动粘贴）"
         }
-        NSSound(named: "Glass")?.play()
+
         overlayManager.dismissPreviewPanel()
-        overlayManager.showDone()
+        if result == .copiedToClipboard {
+            NSSound(named: "Purr")?.play()
+            overlayManager.showTextResult(finalText)
+            openAccessibilitySettings()
+        } else {
+            NSSound(named: "Glass")?.play()
+            overlayManager.showDone()
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            self.overlayManager.dismiss()
+            if result != .copiedToClipboard { self.overlayManager.dismiss() }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
@@ -853,21 +871,22 @@ extension AppState: StreamingTranscriptionDelegate {
         case .insertedViaAX:
             statusText = "已插入: \(finalText.prefix(20))..."
             NSSound(named: "Glass")?.play()
+            overlayManager.showDone()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                self.overlayManager.dismiss()
+            }
         case .pastedViaClipboard:
             statusText = "已粘贴: \(finalText.prefix(20))..."
             NSSound(named: "Glass")?.play()
+            overlayManager.showDone()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                self.overlayManager.dismiss()
+            }
         case .copiedToClipboard:
             statusText = "已复制到剪贴板（请手动粘贴）"
             NSSound(named: "Purr")?.play()
-            showNotification(
-                title: "已复制到剪贴板",
-                body: "无法自动插入，请按 Cmd+V 粘贴：\(finalText.prefix(50))"
-            )
-        }
-
-        overlayManager.showDone()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            self.overlayManager.dismiss()
+            overlayManager.showTextResult(finalText)
+            openAccessibilitySettings()
         }
     }
 

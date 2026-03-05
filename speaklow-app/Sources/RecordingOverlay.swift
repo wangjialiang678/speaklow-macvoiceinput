@@ -65,6 +65,11 @@ class RecordingOverlayManager {
     private var previewPanel: NSPanel?
     private var previewState = TranscriptionPreviewState()
 
+    // Text result panel (shown when insertion fails)
+    private var textResultPanel: NSPanel?
+    private var textResultState = TextResultState()
+    private var textResultDismissTask: DispatchWorkItem?
+
     /// Whether the main screen has a camera housing (notch).
     private var screenHasNotch: Bool {
         guard let screen = NSScreen.main else { return false }
@@ -142,6 +147,16 @@ class RecordingOverlayManager {
 
     func dismissPreviewPanel() {
         DispatchQueue.main.async { self._dismissPreviewPanel() }
+    }
+
+    // MARK: - Text Result Panel API
+
+    func showTextResult(_ text: String) {
+        DispatchQueue.main.async { self._showTextResult(text) }
+    }
+
+    func dismissTextResult() {
+        DispatchQueue.main.async { self._dismissTextResult() }
     }
 
     /// Height of the notch area (menu bar inset) that the panel extends into.
@@ -349,6 +364,7 @@ class RecordingOverlayManager {
             errorPanel = nil
         }
         _dismissPreviewPanel()
+        _dismissTextResult()
     }
 
     private func panelX(_ screen: NSScreen, width: CGFloat) -> CGFloat {
@@ -433,6 +449,73 @@ class RecordingOverlayManager {
                 panel.animator().setFrame(newFrame, display: true)
             }
         }
+    }
+
+    // MARK: - Text Result Panel Private
+
+    private func _showTextResult(_ text: String) {
+        _dismissTextResult()
+
+        textResultState = TextResultState()
+        textResultState.text = text
+        textResultState.onCopy = { [weak self] in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            // Auto-dismiss 1.5s after copy
+            self?.textResultDismissTask?.cancel()
+            let task = DispatchWorkItem { [weak self] in
+                self?._dismissTextResult()
+            }
+            self?.textResultDismissTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: task)
+        }
+
+        let panelWidth = previewPanelWidth
+        let panelHeight: CGFloat = 120
+
+        let panel = makeOverlayPanel(width: panelWidth, height: panelHeight)
+        panel.ignoresMouseEvents = false  // Need clicks for "复制" button
+
+        let view = TextResultView(state: textResultState)
+        let hosting = NSHostingView(rootView: view)
+        hosting.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        hosting.autoresizingMask = [.width, .height]
+        panel.contentView = hosting
+
+        if let screen = NSScreen.main {
+            let x = screen.frame.midX - panelWidth / 2
+            let bottomY = screen.visibleFrame.minY + screen.visibleFrame.height * 0.15
+            panel.setFrame(NSRect(x: x, y: bottomY, width: panelWidth, height: panelHeight), display: true)
+        }
+
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            panel.animator().alphaValue = 1
+        }
+
+        self.textResultPanel = panel
+
+        // Auto-dismiss after 15 seconds if user doesn't interact
+        let task = DispatchWorkItem { [weak self] in
+            self?._dismissTextResult()
+        }
+        textResultDismissTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0, execute: task)
+    }
+
+    private func _dismissTextResult() {
+        textResultDismissTask?.cancel()
+        textResultDismissTask = nil
+        guard let panel = textResultPanel else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.2
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            panel.orderOut(nil)
+            self.textResultPanel = nil
+        })
     }
 
     private func _dismissPreviewPanel() {
@@ -598,6 +681,59 @@ struct ErrorOverlayView: View {
                 .foregroundColor(.white.opacity(0.7))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Text Result Panel (shown when insertion fails)
+
+class TextResultState: ObservableObject {
+    @Published var text: String = ""
+    @Published var copied: Bool = false
+    var onCopy: (() -> Void)?
+}
+
+struct TextResultView: View {
+    @ObservedObject var state: TextResultState
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ScrollView(.vertical, showsIndicators: false) {
+                Text(state.text)
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
+                    .lineSpacing(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                    .textSelection(.enabled)
+            }
+
+            Button(action: {
+                state.onCopy?()
+                state.copied = true
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: state.copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11))
+                    Text(state.copied ? "已复制" : "复制")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundColor(state.copied ? .green : .white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(state.copied ? 0.08 : 0.15))
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 10)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(white: 0.12, opacity: 0.92))
+        )
     }
 }
 

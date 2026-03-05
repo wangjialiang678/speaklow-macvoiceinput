@@ -19,6 +19,12 @@ class TextInserter {
         }
     }
 
+    private enum AXInsertResult {
+        case success
+        case axDisabled      // AX API returned -25211: permission not granted
+        case failed          // AX available but insert failed (e.g., Electron apps)
+    }
+
     static func insert(_ text: String) -> InsertResult {
         viLog("TextInserter.insert() called, text='\(text.prefix(50))' length=\(text.count)")
 
@@ -28,11 +34,21 @@ class TextInserter {
         }
 
         // 1. Try AX API insert
-        if tryInsertViaAX(text) {
+        let axResult = tryInsertViaAX(text)
+        switch axResult {
+        case .success:
             viLog("TextInserter: AX insert succeeded")
             return .insertedViaAX
+        case .axDisabled:
+            // AX API is disabled — CGEvent paste won't work either (same permission).
+            // Just copy to clipboard so the user can paste manually.
+            viLog("TextInserter: AX API disabled, copying to clipboard only")
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            return .copiedToClipboard
+        case .failed:
+            viLog("TextInserter: AX insert failed, falling back to clipboard+paste")
         }
-        viLog("TextInserter: AX insert failed, falling back to clipboard+paste")
 
         // 2. Fall back to clipboard + Cmd+V
         return pasteViaClipboard(text)
@@ -66,7 +82,7 @@ class TextInserter {
 
     // MARK: - AX API
 
-    private static func tryInsertViaAX(_ text: String) -> Bool {
+    private static func tryInsertViaAX(_ text: String) -> AXInsertResult {
         let systemWide = AXUIElementCreateSystemWide()
 
         var focusedElementRef: CFTypeRef?
@@ -80,7 +96,11 @@ class TextInserter {
               let rawElement = focusedElementRef,
               CFGetTypeID(rawElement) == AXUIElementGetTypeID() else {
             viLog("TextInserter AX: no focused element (result=\(result.rawValue))")
-            return false
+            // -25211 = kAXErrorAPIDisabled: Accessibility permission not granted
+            if result.rawValue == -25211 {
+                return .axDisabled
+            }
+            return .failed
         }
 
         let focusedElement = rawElement as! AXUIElement
@@ -102,7 +122,7 @@ class TextInserter {
 
         guard rangeResult == .success else {
             viLog("TextInserter AX: no selected text range (result=\(rangeResult.rawValue))")
-            return false
+            return .failed
         }
 
         // Read current value before insert for verification
@@ -120,7 +140,7 @@ class TextInserter {
         viLog("TextInserter AX: set selected text result=\(setResult.rawValue)")
 
         guard setResult == .success else {
-            return false
+            return .failed
         }
 
         // Verify: read value back after insert
@@ -134,10 +154,10 @@ class TextInserter {
         // If the value didn't change, AX lied to us — fall through to clipboard
         if afterLen >= 0 && beforeLen >= 0 && afterLen == beforeLen {
             viLog("TextInserter AX: value unchanged after set! AX reported success but didn't actually insert. Falling back.")
-            return false
+            return .failed
         }
 
-        return true
+        return .success
     }
 
     // MARK: - Clipboard
@@ -171,6 +191,13 @@ class TextInserter {
     // MARK: - Paste via CGEvent
 
     private static func trySendPasteCommand() -> Bool {
+        // CGEvent posting requires Accessibility permission.
+        // Without it, events are created but silently dropped by macOS.
+        guard AXIsProcessTrusted() else {
+            viLog("TextInserter: CGEvent paste skipped — no Accessibility permission")
+            return false
+        }
+
         let source = CGEventSource(stateID: .hidSystemState)
 
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true)
