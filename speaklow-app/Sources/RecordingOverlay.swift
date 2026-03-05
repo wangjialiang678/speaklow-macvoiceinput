@@ -134,14 +134,26 @@ class RecordingOverlayManager {
         DispatchQueue.main.async { self._showPreviewPanel() }
     }
 
+    private var resizeThrottleTask: DispatchWorkItem?
+
     func updatePreviewText(_ text: String) {
         DispatchQueue.main.async {
             // Auto-show panel on first non-empty text
             if self.previewPanel == nil && !text.isEmpty {
                 self._showPreviewPanel()
             }
+            guard text != self.previewState.displayText else { return }
             self.previewState.displayText = text
-            self._resizePreviewPanel()
+            // Throttle resize to avoid layout thrashing on rapid partial updates
+            if self.resizeThrottleTask == nil {
+                self._resizePreviewPanel()
+                let task = DispatchWorkItem { [weak self] in
+                    self?.resizeThrottleTask = nil
+                    self?._resizePreviewPanel()
+                }
+                self.resizeThrottleTask = task
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: task)
+            }
         }
     }
 
@@ -551,8 +563,10 @@ class RecordingOverlayManager {
 
     private func _dismissPreviewPanel() {
         guard let panel = previewPanel else { return }
+        resizeThrottleTask?.cancel()
+        resizeThrottleTask = nil
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.2
+            ctx.duration = 0.08
             panel.animator().alphaValue = 0
         }, completionHandler: {
             panel.orderOut(nil)
@@ -582,9 +596,12 @@ struct TranscriptionPreviewView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .id("previewEnd")
+                    .animation(nil, value: state.displayText)
             }
             .onChange(of: state.displayText) { _ in
-                proxy.scrollTo("previewEnd", anchor: .bottom)
+                withAnimation(nil) {
+                    proxy.scrollTo("previewEnd", anchor: .bottom)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

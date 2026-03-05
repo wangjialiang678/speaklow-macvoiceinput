@@ -1,3 +1,11 @@
+---
+title: "从零手搓一个 macOS 语音输入法"
+date: 2026-02-28
+status: active
+audience: human
+tags: [tutorial]
+---
+
 # 从零手搓一个 macOS 语音输入法：我和 AI 结对编程的全过程
 
 > 一个技术小白，用 Claude Code 从零开始，做出了一个按住快捷键就能语音输入的 Mac 应用。全程没写一行代码，全靠和 AI 对话完成。

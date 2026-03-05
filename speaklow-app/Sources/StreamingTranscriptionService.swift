@@ -34,7 +34,7 @@ class StreamingTranscriptionService {
 
     // MARK: - Public API
 
-    func start(model: String = "paraformer-realtime-v2", sampleRate: Int = 16000) {
+    func start(model: String = "qwen3-asr-flash-realtime", sampleRate: Int = 16000) {
         guard let url = URL(string: "\(bridgeURL)/v1/stream") else {
             delegate?.streamingDidFail(error: StreamingError.invalidURL)
             return
@@ -127,10 +127,8 @@ class StreamingTranscriptionService {
                     break
                 }
                 // Continue listening (unless finished/error)
-                if self.isConnected || !self.isConnected {
-                    // Always try to receive next message until we explicitly disconnect
-                    self.receiveMessage()
-                }
+                // Always try to receive next message until we explicitly disconnect
+                self.receiveMessage()
 
             case .failure(let error):
                 self.logger.error("receive failed: \(error.localizedDescription)")

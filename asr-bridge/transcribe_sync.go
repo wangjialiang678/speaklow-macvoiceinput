@@ -2,38 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 )
 
 const qwen3ASREndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
-
-// qwen3Hotwords is loaded from hotwords.txt at startup and used as qwen3 system corpus.
-var qwen3Hotwords string
-
-func initQwen3Hotwords() {
-	path := findHotwordsFile()
-	if path == "" {
-		return
-	}
-
-	words, err := loadHotwordsFromFile(path)
-	if err != nil {
-		return
-	}
-
-	var names []string
-	for _, w := range words {
-		names = append(names, w.Text)
-	}
-	qwen3Hotwords = strings.Join(names, ", ")
-}
 
 func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +25,7 @@ func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("parse form: %v", err))
 			return
 		}
+		defer r.MultipartForm.RemoveAll()
 
 		file, _, err := r.FormFile("file")
 		if err != nil {
@@ -61,7 +41,7 @@ func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 		}
 
 		start := time.Now()
-		text, err := transcribeWithQwen3(apiKey, audioData)
+		text, err := transcribeWithQwen3(r.Context(), apiKey, audioData)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("transcribe: %v", err))
 			return
@@ -75,7 +55,7 @@ func transcribeSyncHandler(apiKey string) http.HandlerFunc {
 	}
 }
 
-func transcribeWithQwen3(apiKey string, audioData []byte) (string, error) {
+func transcribeWithQwen3(ctx context.Context, apiKey string, audioData []byte) (string, error) {
 	b64 := base64.StdEncoding.EncodeToString(audioData)
 	audioURI := "data:audio/wav;base64," + b64
 
@@ -124,7 +104,7 @@ func transcribeWithQwen3(apiKey string, audioData []byte) (string, error) {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, qwen3ASREndpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, qwen3ASREndpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}

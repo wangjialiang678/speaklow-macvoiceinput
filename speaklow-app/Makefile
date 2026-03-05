@@ -8,15 +8,20 @@ MACOS_DIR = $(CONTENTS)/MacOS
 SOURCES = $(wildcard Sources/*.swift)
 RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
-ASR_BRIDGE = ../asr-bridge/asr-bridge
+ASR_BRIDGE_DIR = ../asr-bridge
+ASR_BRIDGE = $(ASR_BRIDGE_DIR)/asr-bridge
 
 ENV_FILE ?= $(HOME)/.config/speaklow/.env
 
-.PHONY: all clean run install uninstall dist
+.PHONY: all clean run install uninstall dist dmg
 
 all: $(MACOS_DIR)/$(APP_NAME)
 
-$(MACOS_DIR)/$(APP_NAME): $(SOURCES) Info.plist
+# Auto-build Go bridge binary
+$(ASR_BRIDGE): $(wildcard $(ASR_BRIDGE_DIR)/*.go)
+	cd "$(ASR_BRIDGE_DIR)" && go build -o asr-bridge .
+
+$(MACOS_DIR)/$(APP_NAME): $(SOURCES) Info.plist $(ASR_BRIDGE)
 	@mkdir -p "$(MACOS_DIR)" "$(RESOURCES)"
 	swiftc \
 		-parse-as-library \
@@ -62,3 +67,20 @@ dist: all
 	@echo "Ad-hoc signed"
 	@cd $(BUILD_DIR) && zip -r -q "$(APP_NAME).zip" "$(APP_NAME).app"
 	@echo "Created $(BUILD_DIR)/$(APP_NAME).zip — ready to share"
+
+# Build a distributable DMG with API key bundled inside
+DMG_NAME = $(APP_NAME).dmg
+DMG_TEMP = $(BUILD_DIR)/dmg-staging
+
+dmg: dist
+	@echo "Creating DMG..."
+	@rm -rf "$(DMG_TEMP)" "$(BUILD_DIR)/$(DMG_NAME)"
+	@mkdir -p "$(DMG_TEMP)"
+	@cp -R "$(APP_BUNDLE)" "$(DMG_TEMP)/"
+	@ln -s /Applications "$(DMG_TEMP)/Applications"
+	@hdiutil create -volname "$(APP_NAME)" \
+		-srcfolder "$(DMG_TEMP)" \
+		-ov -format UDZO \
+		"$(BUILD_DIR)/$(DMG_NAME)"
+	@rm -rf "$(DMG_TEMP)"
+	@echo "Created $(BUILD_DIR)/$(DMG_NAME) — ready to share"

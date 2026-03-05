@@ -1,3 +1,11 @@
+---
+title: "audio-asr-suite 集成提案"
+date: 2026-03-02
+status: archived
+audience: both
+tags: [design, integration]
+---
+
 # audio-asr-suite 集成提案：封装改进与消费方迁移
 
 > **提案发起方**: speaklow-macvoiceinput（消费方）

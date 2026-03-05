@@ -4,21 +4,18 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 )
 
 const (
-	defaultPort       = "18089"
-	defaultModel      = "paraformer-realtime-v2"
-	defaultSampleRate = 16000
-	defaultFormat     = "wav"
-	maxUploadSize     = 50 << 20 // 50 MB
+	defaultPort   = "18089"
+	defaultModel  = "qwen3-asr-flash-realtime"
+	maxUploadSize = 50 << 20 // 50 MB
 )
 
 func main() {
@@ -29,8 +26,7 @@ func main() {
 		log.Fatal("DASHSCOPE_API_KEY is not set")
 	}
 
-	initHotwords(apiKey)
-	initQwen3Hotwords()
+	initHotwords()
 
 	port := os.Getenv("ASR_BRIDGE_PORT")
 	if port == "" {
@@ -39,7 +35,6 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/v1/transcribe", transcribeHandler(apiKey))
 	mux.HandleFunc("/v1/transcribe-sync", transcribeSyncHandler(apiKey))
 	mux.HandleFunc("/v1/stream", streamHandler(apiKey))
 	mux.HandleFunc("/v1/refine", refineHandler(apiKey))
@@ -54,67 +49,14 @@ func main() {
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func transcribeHandler(apiKey string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-
-		if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("parse form: %v", err))
-			return
-		}
-
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("get file: %v", err))
-			return
-		}
-		defer file.Close()
-
-		audioData, err := io.ReadAll(file)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("read file: %v", err))
-			return
-		}
-
-		model := r.FormValue("model")
-		if model == "" {
-			model = os.Getenv("ASR_MODEL")
-		}
-		if model == "" {
-			model = defaultModel
-		}
-
-		sampleRate := defaultSampleRate
-		if s := r.FormValue("sample_rate"); s != "" {
-			if v, err := strconv.Atoi(s); err == nil && v > 0 {
-				sampleRate = v
-			}
-		}
-
-		format := r.FormValue("format")
-		if format == "" {
-			format = defaultFormat
-		}
-
-		start := time.Now()
-		text, err := transcribe(apiKey, audioData, model, sampleRate, format)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("transcribe: %v", err))
-			return
-		}
-		durationMs := time.Since(start).Milliseconds()
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"text":        text,
-			"duration_ms": durationMs,
-		})
+	model := os.Getenv("ASR_MODEL")
+	if model == "" {
+		model = defaultModel
 	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "ok",
+		"model":  model,
+	})
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -145,8 +87,8 @@ func isAllowedOrigin(origin string) bool {
 		"http://127.0.0.1",
 		"https://127.0.0.1",
 	}
-	for _, prefix := range allowed {
-		if len(origin) >= len(prefix) && origin[:len(prefix)] == prefix {
+	for _, a := range allowed {
+		if origin == a || strings.HasPrefix(origin, a+":") {
 			return true
 		}
 	}

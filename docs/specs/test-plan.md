@@ -1,3 +1,11 @@
+---
+title: "SpeakLow 测试方案"
+date: 2026-03-01
+status: active
+audience: both
+tags: [test]
+---
+
 # SpeakLow 测试方案
 
 ## 1. ASR Bridge 测试
