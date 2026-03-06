@@ -9,6 +9,17 @@ import os.log
 
 private let recordingLog = OSLog(subsystem: "com.speaklow.app", category: "Recording")
 
+// 日志轮转：超过 5MB 时将旧日志移到 .1.log
+private func rotateLogIfNeeded() {
+    let logPath = NSHomeDirectory() + "/Library/Logs/SpeakLow.log"
+    guard let attrs = try? FileManager.default.attributesOfItem(atPath: logPath),
+          let size = attrs[.size] as? Int, size > 5 * 1024 * 1024 else { return }
+    let backupPath = logPath + ".1.log"
+    try? FileManager.default.removeItem(atPath: backupPath)
+    try? FileManager.default.moveItem(atPath: logPath, toPath: backupPath)
+    viLog("日志已轮转（旧日志保存为 SpeakLow.log.1.log）")
+}
+
 // File-based logger for debugging (unified log not visible for unsigned apps)
 func viLog(_ message: String) {
     let timestamp = ISO8601DateFormatter().string(from: Date())
@@ -55,7 +66,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var asrMode: ASRMode {
         didSet {
             UserDefaults.standard.set(asrMode.rawValue, forKey: "asr_mode")
-            viLog("ASR mode changed to \(asrMode.rawValue)")
+            viLog("ASR mode: \(oldValue.rawValue) → \(asrMode.rawValue)")
             strategy = Self.makeStrategy(for: asrMode)
             // Bridge 生命周期跟随模式
             if asrMode == .streaming {
@@ -124,6 +135,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var pendingRefineCount = 0
 
     init() {
+        rotateLogIfNeeded()
         let hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
         let selectedHotkey = HotkeyOption(rawValue: UserDefaults.standard.string(forKey: "hotkey_option") ?? "rightOption") ?? .rightOption
         let initialAccessibility = AXIsProcessTrusted()
