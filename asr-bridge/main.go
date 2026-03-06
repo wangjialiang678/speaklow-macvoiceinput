@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -18,7 +20,25 @@ const (
 	maxUploadSize = 50 << 20 // 50 MB
 )
 
+func initFileLog() {
+	logDir := filepath.Join(os.Getenv("HOME"), "Library", "Logs")
+	logPath := filepath.Join(logDir, "SpeakLow-bridge.log")
+
+	// 简单轮转: >5MB 重命名为 .1.log
+	if info, err := os.Stat(logPath); err == nil && info.Size() > 5*1024*1024 {
+		_ = os.Rename(logPath, logPath+".1.log")
+	}
+
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("warning: cannot open log file %s: %v", logPath, err)
+		return
+	}
+	log.SetOutput(io.MultiWriter(os.Stdout, f))
+}
+
 func main() {
+	initFileLog()
 	loadEnv()
 
 	apiKey := os.Getenv("DASHSCOPE_API_KEY")
