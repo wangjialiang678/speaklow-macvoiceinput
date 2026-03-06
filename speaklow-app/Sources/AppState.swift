@@ -390,6 +390,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 } else {
                     self.overlayManager.showRecording()
                 }
+                self.overlayManager.updatePreviewText("🎙 正在录音...")
                 overlayShown = true
                 NSSound(named: "Tink")?.play()
             }
@@ -622,6 +623,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         statusText = "识别中..."
         NSSound(named: "Pop")?.play()
         overlayManager.showTranscribing()
+        overlayManager.updatePreviewText("🔍 正在识别...")
 
         let client = DashScopeClient.shared
         viLog("Batch: starting DashScope transcription, file=\(fileURL.lastPathComponent)")
@@ -650,7 +652,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     self.lastTranscript = trimmed
 
                     if self.llmRefineEnabled {
-                        self.overlayManager.updatePreviewText("正在优化...")
+                        self.overlayManager.updatePreviewText("✨ 正在优化...")
                         viLog("Batch: starting DashScope refine, style=\(self.refineStyle.rawValue)")
                         let style = self.refineStyle
                         Task {
