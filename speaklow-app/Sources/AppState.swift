@@ -31,7 +31,6 @@ func isCorpusLeak(_ text: String) -> Bool {
 
 final class AppState: ObservableObject, @unchecked Sendable {
     private let selectedMicrophoneStorageKey = "selected_microphone_id"
-    private let transcribingIndicatorDelay: TimeInterval = 1.0
 
     @Published var hasCompletedSetup: Bool {
         didSet {
@@ -622,20 +621,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         isTranscribing = true
         statusText = "识别中..."
         NSSound(named: "Pop")?.play()
-        overlayManager.slideUpToNotch { }
-
-        // 延迟显示 "识别中" overlay
-        let indicatorDelay = transcribingIndicatorDelay
-        transcribingIndicatorTask?.cancel()
-        transcribingIndicatorTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: UInt64(indicatorDelay * 1_000_000_000))
-                guard self?.isTranscribing == true else { return }
-                await MainActor.run { [weak self] in
-                    self?.overlayManager.showTranscribing()
-                }
-            } catch {}
-        }
+        overlayManager.showTranscribing()
 
         let client = DashScopeClient.shared
         viLog("Batch: starting DashScope transcription, file=\(fileURL.lastPathComponent)")
@@ -648,7 +634,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
                 if isCorpusLeak(trimmed) || trimmed.isEmpty {
                     await MainActor.run {
-                        self.transcribingIndicatorTask?.cancel()
                         self.isTranscribing = false
                         self.statusText = "未检测到语音"
                         NSSound(named: "Basso")?.play()
@@ -661,12 +646,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 }
 
                 await MainActor.run {
-                    self.transcribingIndicatorTask?.cancel()
                     self.isTranscribing = false
                     self.lastTranscript = trimmed
 
                     if self.llmRefineEnabled {
-                        self.overlayManager.updatePreviewText("✨ 正在优化...")
+                        self.overlayManager.updatePreviewText("正在优化...")
                         viLog("Batch: starting DashScope refine, style=\(self.refineStyle.rawValue)")
                         let style = self.refineStyle
                         Task {
@@ -683,7 +667,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 viLog("Batch: transcription FAILED: \(error.localizedDescription)")
                 let (errTitle, errSuggestion) = self.userFriendlyTranscriptionError(error)
                 await MainActor.run {
-                    self.transcribingIndicatorTask?.cancel()
                     self.isTranscribing = false
                     self.errorMessage = error.localizedDescription
                     self.statusText = errTitle
@@ -748,10 +731,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         streamingService?.stop()
         viLog("stopStreamingRecording: stop message sent to bridge")
 
-        // Show finalizing indicator
-        overlayManager.slideUpToNotch { [weak self] in
-            self?.overlayManager.showTranscribing()
-        }
+        // Show finalizing indicator immediately
+        overlayManager.showTranscribing()
         statusText = "正在完成..."
 
         // Safety timeout: if streamingDidFinish doesn't fire within 5s, force-finish
@@ -793,20 +774,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         statusText = "Transcribing..."
         errorMessage = nil
         NSSound(named: "Pop")?.play()
-        overlayManager.slideUpToNotch { }
-
-        transcribingIndicatorTask?.cancel()
-        let indicatorDelay = transcribingIndicatorDelay
-        transcribingIndicatorTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: UInt64(indicatorDelay * 1_000_000_000))
-                let shouldShowTranscribing = self?.isTranscribing ?? false
-                guard shouldShowTranscribing else { return }
-                await MainActor.run { [weak self] in
-                    self?.overlayManager.showTranscribing()
-                }
-            } catch {}
-        }
+        overlayManager.showTranscribing()
 
         let transcriptionService = TranscriptionService()
         viLog("Starting transcription, file size=\(fileSize) bytes")
@@ -820,8 +788,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 os_log(.info, log: recordingLog, "Transcription result: '%{public}@' (length=%d)", trimmed, trimmed.count)
 
                 await MainActor.run {
-                    self.transcribingIndicatorTask?.cancel()
-                    self.transcribingIndicatorTask = nil
                     self.isTranscribing = false
 
                     if trimmed.isEmpty {
@@ -873,8 +839,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
                 let (errTitle, errSuggestion) = self.userFriendlyTranscriptionError(error)
                 await MainActor.run {
-                    self.transcribingIndicatorTask?.cancel()
-                    self.transcribingIndicatorTask = nil
                     self.errorMessage = error.localizedDescription
                     self.isTranscribing = false
                     self.statusText = errTitle
@@ -1251,6 +1215,8 @@ extension AppState: StreamingTranscriptionDelegate {
             viLog("LLM refined (batch): '\(originalText.prefix(30))' → '\(finalText.prefix(30))'")
             lastTranscript = finalText
         }
+
+        overlayManager.dismissPreviewPanel()
 
         viLog("Batch: inserting text, length=\(finalText.count)")
         let insertResult = TextInserter.insert(finalText)

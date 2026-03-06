@@ -471,6 +471,11 @@ class RecordingOverlayManager {
 
     private func _showTextResult(_ text: String) {
         _dismissTextResult()
+        // 清理 transcribing 小圆点（copiedToClipboard 路径不经过 showDone）
+        if let panel = transcribingPanel {
+            panel.orderOut(nil)
+            transcribingPanel = nil
+        }
 
         textResultState = TextResultState()
         textResultState.text = text
