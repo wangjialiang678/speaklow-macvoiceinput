@@ -56,8 +56,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var llmRefineEnabled: Bool {
         didSet { UserDefaults.standard.set(llmRefineEnabled, forKey: "llm_refine_enabled") }
     }
-    @Published var llmRefineMode: RefineMode {
-        didSet { UserDefaults.standard.set(llmRefineMode.rawValue, forKey: "llm_refine_mode") }
+    @Published var refineStyle: RefineStyle {
+        didSet { UserDefaults.standard.set(refineStyle.rawValue, forKey: "refine_style") }
     }
     @Published var launchAtLogin: Bool {
         didSet { setLaunchAtLogin(launchAtLogin) }
@@ -104,7 +104,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         // LLM refinement defaults: enabled
         let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? true
-        let llmMode = RefineMode(rawValue: UserDefaults.standard.string(forKey: "llm_refine_mode") ?? "both") ?? .both
+        let style = RefineStyle(rawValue: UserDefaults.standard.string(forKey: "refine_style") ?? "default") ?? .default
 
         self.hasCompletedSetup = hasCompletedSetup
         self.selectedHotkey = selectedHotkey
@@ -112,7 +112,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
         self.selectedMicrophoneID = selectedMicrophoneID
         self.llmRefineEnabled = llmEnabled
-        self.llmRefineMode = llmMode
+        self.refineStyle = style
 
         refreshAvailableMicrophones()
         installAudioDeviceListener()
@@ -615,10 +615,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
                         if self.llmRefineEnabled {
                             self.overlayManager.updatePreviewText("✨ 正在优化...")
-                            viLog("Batch: starting LLM refine, mode=\(self.llmRefineMode.rawValue)")
-                            let mode = self.llmRefineMode
+                            viLog("Batch: starting LLM refine, style=\(self.refineStyle.rawValue)")
+                            let style = self.refineStyle
                             Task {
-                                let refined = await TextRefineService.refine(text: trimmed, mode: mode)
+                                let refined = await TextRefineService.refine(text: trimmed, style: style)
                                 await MainActor.run {
                                     self.batchInsertAndFinish(originalText: trimmed, finalText: refined)
                                 }
@@ -806,9 +806,9 @@ extension AppState: StreamingTranscriptionDelegate {
 
         guard llmRefineEnabled else { return }
         pendingRefineCount += 1
-        let mode = llmRefineMode
+        let style = refineStyle
         Task {
-            let refined = await TextRefineService.refine(text: text, mode: mode)
+            let refined = await TextRefineService.refine(text: text, style: style)
             await MainActor.run {
                 self.sentenceRefineCache[text] = refined
                 self.pendingRefineCount = max(0, self.pendingRefineCount - 1)
@@ -967,10 +967,10 @@ extension AppState: StreamingTranscriptionDelegate {
             }
 
             overlayManager.updatePreviewText("✨ 正在优化...")
-            viLog("applyFinalTranscript: starting LLM refine, mode=\(llmRefineMode.rawValue)")
-            let mode = llmRefineMode
+            viLog("applyFinalTranscript: starting LLM refine, style=\(refineStyle.rawValue)")
+            let style = refineStyle
             Task {
-                let refined = await TextRefineService.refine(text: text, mode: mode)
+                let refined = await TextRefineService.refine(text: text, style: style)
                 await MainActor.run {
                     self.insertAndFinish(originalText: text, finalText: refined)
                 }

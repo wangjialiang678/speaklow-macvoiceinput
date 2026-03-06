@@ -3,6 +3,7 @@
 Cursor	5	en	zh
 Claude Code	5	en	zh	克劳德扣的
 Copilot	5	en	zh	扣pai了
+git 5 en zh
 TRAE	5	en	zh
 OpenCode	5	en	zh
 CLI	4	en	zh

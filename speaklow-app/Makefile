@@ -37,6 +37,9 @@ $(MACOS_DIR)/$(APP_NAME): $(SOURCES) Info.plist $(ASR_BRIDGE)
 	@if [ -f "$(ASR_BRIDGE)" ]; then cp "$(ASR_BRIDGE)" "$(MACOS_DIR)/asr-bridge"; echo "Copied asr-bridge"; fi
 	@if [ -d Resources ] && [ -f Resources/AppIcon.icns ]; then cp Resources/AppIcon.icns "$(RESOURCES)/"; fi
 	@if [ -f Resources/hotwords.txt ]; then cp Resources/hotwords.txt "$(RESOURCES)/"; fi
+	@if [ -f Resources/refine_preamble.txt ]; then cp Resources/refine_preamble.txt "$(RESOURCES)/"; fi
+	@if [ -f Resources/refine_prompt.txt ]; then cp Resources/refine_prompt.txt "$(RESOURCES)/"; fi
+	@if [ -d Resources/refine_styles ]; then mkdir -p "$(RESOURCES)/refine_styles" && cp Resources/refine_styles/*.txt "$(RESOURCES)/refine_styles/"; fi
 	@echo "Built $(APP_BUNDLE)"
 
 clean:

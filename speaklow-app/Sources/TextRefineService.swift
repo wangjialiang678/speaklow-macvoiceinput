@@ -1,17 +1,17 @@
 import Foundation
 
-enum RefineMode: String, CaseIterable, Identifiable {
-    case correct = "correct"
-    case polish = "polish"
-    case both = "both"
+enum RefineStyle: String, CaseIterable, Identifiable {
+    case `default` = "default"
+    case business = "business"
+    case chat = "chat"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .correct: return "纠错"
-        case .polish: return "润色"
-        case .both: return "纠错+润色"
+        case .default: return "通用"
+        case .business: return "商务"
+        case .chat: return "聊天"
         }
     }
 }
@@ -21,15 +21,15 @@ struct TextRefineService {
     private static let timeout: TimeInterval = 8
 
     /// Refine ASR text via LLM. Returns original text on any failure.
-    static func refine(text: String, mode: RefineMode) async -> String {
+    static func refine(text: String, style: RefineStyle = .default) async -> String {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return text
         }
 
-        viLog("TextRefine: starting, mode=\(mode.rawValue), length=\(text.count)")
+        viLog("TextRefine: starting, style=\(style.rawValue), length=\(text.count)")
 
         do {
-            let body: [String: String] = ["text": text, "mode": mode.rawValue]
+            let body: [String: String] = ["text": text, "style": style.rawValue]
             let bodyData = try JSONSerialization.data(withJSONObject: body)
 
             var request = URLRequest(url: URL(string: refineURL)!)

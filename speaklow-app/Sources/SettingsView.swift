@@ -45,14 +45,14 @@ struct SettingsView: View {
                 Toggle("启用 AI 优化", isOn: $appState.llmRefineEnabled)
 
                 if appState.llmRefineEnabled {
-                    Picker("优化模式", selection: $appState.llmRefineMode) {
-                        ForEach(RefineMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
+                    Picker("文字风格", selection: $appState.refineStyle) {
+                        ForEach(RefineStyle.allCases) { style in
+                            Text(style.displayName).tag(style)
                         }
                     }
                     .pickerStyle(.segmented)
 
-                    Text("语音识别后由大模型自动优化文字，可能增加 1-3 秒延迟")
+                    Text("通用：纠错+润色 ｜ 商务：正式书面 ｜ 聊天：轻松+emoji")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

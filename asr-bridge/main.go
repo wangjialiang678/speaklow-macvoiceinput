@@ -27,6 +27,8 @@ func main() {
 	}
 
 	initHotwords()
+	initConfigPaths()
+	loadRefinePrompt()
 
 	port := os.Getenv("ASR_BRIDGE_PORT")
 	if port == "" {
