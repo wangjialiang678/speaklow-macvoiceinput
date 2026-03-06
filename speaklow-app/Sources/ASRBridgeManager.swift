@@ -8,6 +8,8 @@ class ASRBridgeManager {
     private var isStopping = false
     private var healthTimer: Timer?
     private var consecutiveHealthFailures = 0
+    private var consecutiveRestarts = 0
+    private let maxConsecutiveRestarts = 3
 
     func start() throws {
         isStopping = false
@@ -25,7 +27,11 @@ class ASRBridgeManager {
             os_log(.info, log: bridgeLog, "Found asr-bridge at dev path: %{public}@", devPath)
         } else {
             os_log(.error, log: bridgeLog, "asr-bridge binary NOT FOUND, checked: %{public}@ and %{public}@", primaryPath, devPath)
-            return
+            throw NSError(
+                domain: "ASRBridgeManager",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "找不到 asr-bridge 二进制文件"]
+            )
         }
 
         // 2. Load environment from .env file
@@ -50,14 +56,26 @@ class ASRBridgeManager {
         }
 
         proc.terminationHandler = { [weak self] process in
-            os_log(.info, log: bridgeLog, "asr-bridge terminated with exit code %d", process.terminationStatus)
             DispatchQueue.main.async {
                 guard let self else { return }
+                os_log(.info, log: bridgeLog, "asr-bridge terminated with exit code %d", process.terminationStatus)
                 self.process = nil
-                if !self.isStopping {
-                    viLog("Bridge crashed (exit \(process.terminationStatus)), auto-restarting in 1s...")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                        try? self?.start()
+                guard !self.isStopping else { return }
+
+                self.consecutiveRestarts += 1
+                if self.consecutiveRestarts > self.maxConsecutiveRestarts {
+                    os_log(.error, log: bridgeLog, "asr-bridge 连续重启超过上限（%d），停止自动重启", self.maxConsecutiveRestarts)
+                    viLog("Bridge 连续重启超过 \(self.maxConsecutiveRestarts) 次，停止自动重启，请检查配置")
+                    return
+                }
+
+                viLog("Bridge 崩溃（exit \(process.terminationStatus)），1 秒后自动重启（第 \(self.consecutiveRestarts)/\(self.maxConsecutiveRestarts) 次）...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    guard let self else { return }
+                    do {
+                        try self.start()
+                    } catch {
+                        os_log(.error, log: bridgeLog, "自动重启失败: %{public}@", error.localizedDescription)
                     }
                 }
             }
@@ -73,6 +91,9 @@ class ASRBridgeManager {
             let deadline = Date().addingTimeInterval(5)
             while Date() < deadline {
                 if await service.checkHealth() {
+                    await MainActor.run {
+                        self.consecutiveRestarts = 0
+                    }
                     os_log(.info, log: bridgeLog, "asr-bridge is READY")
                     return
                 }
@@ -103,12 +124,14 @@ class ASRBridgeManager {
         viLog("Bridge health monitor: started (30s interval)")
         healthTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             guard let self else { return }
+            guard self.healthTimer != nil else { return }
             Task {
                 let service = TranscriptionService()
                 let healthy = await service.checkHealth()
                 await MainActor.run {
                     if healthy {
                         self.consecutiveHealthFailures = 0
+                        self.consecutiveRestarts = 0
                     } else {
                         self.consecutiveHealthFailures += 1
                         viLog("Bridge health check failed (\(self.consecutiveHealthFailures) consecutive)")
@@ -143,6 +166,9 @@ class ASRBridgeManager {
 
         // Quick check — if already healthy, return immediately
         if await service.checkHealth() {
+            await MainActor.run {
+                self.consecutiveRestarts = 0
+            }
             os_log(.info, log: bridgeLog, "ensureRunning: bridge already healthy")
             return true
         }
@@ -163,6 +189,9 @@ class ASRBridgeManager {
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
             if await service.checkHealth() {
+                await MainActor.run {
+                    self.consecutiveRestarts = 0
+                }
                 os_log(.info, log: bridgeLog, "ensureRunning: bridge is READY after restart")
                 return true
             }

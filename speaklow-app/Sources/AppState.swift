@@ -56,6 +56,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         didSet {
             UserDefaults.standard.set(asrMode.rawValue, forKey: "asr_mode")
             viLog("ASR mode changed to \(asrMode.rawValue)")
+            strategy = Self.makeStrategy(for: asrMode)
             // Bridge 生命周期跟随模式
             if asrMode == .streaming {
                 if let bridge = bridgeManager, !bridge.isRunning {
@@ -89,12 +90,22 @@ final class AppState: ObservableObject, @unchecked Sendable {
     let audioRecorder = AudioRecorder()
     let hotkeyManager = HotkeyManager()
     let overlayManager = RecordingOverlayManager()
+    private var strategy: TranscriptionStrategy
     /// Set by AppDelegate after init; used for auto-restart on health check failure.
     var bridgeManager: ASRBridgeManager?
     private var accessibilityTimer: Timer?
     private var audioLevelCancellable: AnyCancellable?
     private var transcribingIndicatorTask: Task<Void, Never>?
     private var audioDeviceListenerBlock: AudioObjectPropertyListenerBlock?
+
+    private static func makeStrategy(for mode: ASRMode) -> TranscriptionStrategy {
+        switch mode {
+        case .batch:
+            return BatchStrategy()
+        case .streaming:
+            return StreamingStrategy()
+        }
+    }
 
     // Streaming state
     private var streamingService: StreamingTranscriptionService?
@@ -126,6 +137,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let style = RefineStyle(rawValue: UserDefaults.standard.string(forKey: "refine_style") ?? "default") ?? .default
 
         self.asrMode = asrMode
+        self.strategy = Self.makeStrategy(for: asrMode)
         self.hasCompletedSetup = hasCompletedSetup
         self.selectedHotkey = selectedHotkey
         self.hasAccessibility = initialAccessibility
@@ -274,22 +286,33 @@ final class AppState: ObservableObject, @unchecked Sendable {
         viLog("handleHotkeyUp() fired, isRecording=\(isRecording), isStreaming=\(isStreaming), asrMode=\(asrMode.rawValue)")
         guard isRecording else { return }
 
-        switch asrMode {
-        case .batch:
-            stopAndTranscribeBatch()
-        case .streaming:
-            if isStreaming {
-                stopStreamingRecording()
-            } else {
-                stopAndTranscribe()
+        if strategy.needsBridge && isStreaming {
+            // FIXME: StreamingStrategy 仍是过渡实现，实际停止逻辑继续走 AppState 现有流程
+            Task { [weak self] in
+                guard let self else { return }
+                _ = try? await self.strategy.finish(recorder: self.audioRecorder, overlay: self.overlayManager)
             }
+            stopStreamingRecording()
+            return
+        }
+
+        if strategy.needsBridge {
+            // 流式回退到 batch 转写时，改用 BatchStrategy
+            stopAndTranscribeBatch(using: BatchStrategy())
+        } else {
+            stopAndTranscribeBatch()
         }
     }
 
     func toggleRecording() {
         os_log(.info, log: recordingLog, "toggleRecording() called, isRecording=%{public}d", isRecording)
         if isRecording {
-            stopAndTranscribe()
+            switch asrMode {
+            case .batch:
+                stopAndTranscribeBatch()
+            case .streaming:
+                stopStreamingRecording()
+            }
         } else {
             startRecording()
         }
@@ -355,11 +378,33 @@ final class AppState: ObservableObject, @unchecked Sendable {
         errorMessage = nil
         statusText = "Starting..."
 
-        switch asrMode {
-        case .batch:
-            _beginRecordingBatch()
-        case .streaming:
-            _beginRecordingStreaming()
+        Task { [weak self] in
+            guard let self else { return }
+            let prepared = await self.strategy.prepare(bridgeManager: self.bridgeManager)
+            await MainActor.run {
+                guard self.isRecording else { return }
+                guard prepared else {
+                    viLog("beginRecording: strategy prepare failed")
+                    self.isRecording = false
+                    self.statusText = "语音功能异常"
+                    self.errorMessage = "语音功能出了问题"
+                    NSSound(named: "Basso")?.play()
+                    self.overlayManager.showError(
+                        title: "语音功能出了问题",
+                        suggestion: "请退出并重新打开 SpeakLow"
+                    )
+                    return
+                }
+
+                self.strategy.begin(recorder: self.audioRecorder, overlay: self.overlayManager)
+
+                if self.strategy.needsBridge {
+                    // FIXME: 流式路径仍由 AppState 现有实现驱动，Strategy 仅做过渡接入
+                    self._beginRecordingStreaming()
+                } else {
+                    self._beginRecordingBatch()
+                }
+            }
         }
     }
 
@@ -593,8 +638,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     // MARK: - Batch Mode Stop & Transcribe
 
-    private func stopAndTranscribeBatch() {
-        viLog("stopAndTranscribeBatch() entered")
+    private func stopAndTranscribeBatch(using finishStrategy: TranscriptionStrategy? = nil) {
+        let strategyToUse = finishStrategy ?? strategy
+        viLog("stopAndTranscribeBatch() entered, strategy=\(String(describing: type(of: strategyToUse)))")
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
 
@@ -609,15 +655,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
         recordingStartTime = nil
 
-        guard let fileURL = audioRecorder.stopRecording() else {
-            viLog("Batch: stopRecording() returned nil")
-            isRecording = false
-            statusText = "Error"
-            errorMessage = "No audio recorded"
-            overlayManager.dismiss()
-            return
-        }
-
         isRecording = false
         isTranscribing = true
         statusText = "识别中..."
@@ -625,16 +662,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
         overlayManager.showTranscribing()
         overlayManager.updatePreviewText("🔍 正在识别...")
 
-        let client = DashScopeClient.shared
-        viLog("Batch: starting DashScope transcription, file=\(fileURL.lastPathComponent)")
-
         Task {
             do {
-                let rawTranscript = try await client.transcribe(audioFileURL: fileURL)
-                let trimmed = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawTranscript = try await strategyToUse.finish(recorder: self.audioRecorder, overlay: self.overlayManager)
+                let trimmed = (rawTranscript ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 viLog("Batch: transcription result='\(trimmed.prefix(40))' (length=\(trimmed.count))")
 
-                if isCorpusLeak(trimmed) || trimmed.isEmpty {
+                if trimmed.isEmpty {
                     await MainActor.run {
                         self.isTranscribing = false
                         self.statusText = "未检测到语音"
@@ -746,112 +780,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
         safetyTimeoutWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
-    }
-
-    // MARK: - Transcription
-
-    func stopAndTranscribe() {
-        viLog(" stopAndTranscribe() entered")
-        os_log(.info, log: recordingLog, "stopAndTranscribe() entered")
-        audioLevelCancellable?.cancel()
-        audioLevelCancellable = nil
-
-        guard let fileURL = audioRecorder.stopRecording() else {
-            os_log(.error, log: recordingLog, "stopRecording() returned nil — no audio file")
-            errorMessage = "No audio recorded"
-            isRecording = false
-            statusText = "Error"
-            return
-        }
-
-        viLog("Audio file: \(fileURL.path)")
-        os_log(.info, log: recordingLog, "Audio file: %{public}@", fileURL.path)
-
-        // Check file size
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
-        os_log(.info, log: recordingLog, "Audio file size: %d bytes", fileSize)
-
-        isRecording = false
-        isTranscribing = true
-        statusText = "Transcribing..."
-        errorMessage = nil
-        NSSound(named: "Pop")?.play()
-        overlayManager.showTranscribing()
-
-        let transcriptionService = TranscriptionService()
-        viLog("Starting transcription, file size=\(fileSize) bytes")
-        os_log(.info, log: recordingLog, "Starting transcription task...")
-
-        Task {
-            do {
-                let rawTranscript = try await transcriptionService.transcribe(fileURL: fileURL)
-                let trimmed = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-                viLog("Transcription result: '\(trimmed)' (length=\(trimmed.count))")
-                os_log(.info, log: recordingLog, "Transcription result: '%{public}@' (length=%d)", trimmed, trimmed.count)
-
-                await MainActor.run {
-                    self.isTranscribing = false
-
-                    if trimmed.isEmpty {
-                        viLog("Empty transcription — nothing to insert")
-                        self.statusText = "未检测到语音"
-                        NSSound(named: "Basso")?.play()
-                        self.overlayManager.showError(
-                            title: "未检测到语音",
-                            suggestion: "请靠近麦克风说话"
-                        )
-                    } else {
-                        self.lastTranscript = trimmed
-
-                        if self.llmRefineEnabled {
-                            self.overlayManager.updatePreviewText("✨ 正在优化...")
-                            viLog("Batch: starting LLM refine, style=\(self.refineStyle.rawValue)")
-                            let style = self.refineStyle
-                            Task {
-                                let refined = await DashScopeClient.shared.refine(text: trimmed, style: style)
-                                await MainActor.run {
-                                    self.batchInsertAndFinish(originalText: trimmed, finalText: refined)
-                                }
-                            }
-                        } else {
-                            self.batchInsertAndFinish(originalText: trimmed, finalText: trimmed)
-                        }
-                    }
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                        if self.statusText.hasPrefix("已插入") || self.statusText.hasPrefix("已粘贴") ||
-                           self.statusText.hasPrefix("已复制") || self.statusText.hasPrefix("识别失败") ||
-                           self.statusText == "Nothing to transcribe" {
-                            self.statusText = "Ready"
-                        }
-                    }
-                }
-            } catch {
-                viLog("Transcription FAILED: \(error.localizedDescription)")
-
-                // If it looks like bridge died, try to auto-restart for next time
-                let desc = error.localizedDescription.lowercased()
-                if desc.contains("18089") || desc.contains("localhost") || desc.contains("connection refused") {
-                    if let bridge = self.bridgeManager {
-                        viLog("Bridge appears down — attempting auto-restart for next recording...")
-                        let restarted = await bridge.ensureRunning()
-                        viLog("Bridge auto-restart result: \(restarted)")
-                    }
-                }
-
-                let (errTitle, errSuggestion) = self.userFriendlyTranscriptionError(error)
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.isTranscribing = false
-                    self.statusText = errTitle
-                    NSSound(named: "Basso")?.play()
-                    self.overlayManager.showError(
-                        title: errTitle,
-                        suggestion: errSuggestion
-                    )
-                }
-            }
-        }
     }
 
     private func userFriendlyTranscriptionError(_ error: Error) -> (title: String, suggestion: String) {
@@ -1283,6 +1211,6 @@ extension AppState: StreamingTranscriptionDelegate {
         }
 
         // Recoverable: keep recording for batch fallback.
-        // When user releases hotkey, handleHotkeyUp will call stopAndTranscribe().
+        // When user releases hotkey, handleHotkeyUp will call stopAndTranscribeBatch().
     }
 }

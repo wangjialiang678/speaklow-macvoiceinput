@@ -98,18 +98,44 @@ final class DashScopeClient {
         return try? String(contentsOf: fileURL, encoding: .utf8)
     }
 
-    private func convertTo16kMono(fileURL: URL) throws -> URL {
+    private func convertTo16kMono(fileURL: URL) throws -> Data {
         let convertedURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + "_16k.wav")
+        defer { try? FileManager.default.removeItem(at: convertedURL) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
         process.arguments = ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", fileURL.path, convertedURL.path]
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
+
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            semaphore.signal()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            viLog("afconvert 启动失败: \(error.localizedDescription)")
             throw DashScopeError.audioConversionFailed
         }
-        return convertedURL
+
+        let result = semaphore.wait(timeout: .now() + 10)
+        if result == .timedOut {
+            process.terminate()
+            viLog("afconvert 超时，强制终止")
+            throw DashScopeError.audioConversionFailed
+        }
+
+        guard process.terminationStatus == 0 else {
+            viLog("afconvert 转换失败，退出码: \(process.terminationStatus)")
+            throw DashScopeError.audioConversionFailed
+        }
+
+        do {
+            return try Data(contentsOf: convertedURL)
+        } catch {
+            viLog("读取转换后的音频失败: \(error.localizedDescription)")
+            throw DashScopeError.audioConversionFailed
+        }
     }
 
     // MARK: - ASR Transcription
@@ -120,20 +146,17 @@ final class DashScopeClient {
             throw DashScopeError.noAPIKey
         }
 
-        // 1. 转换为 16kHz mono WAV
-        let convertedURL = try convertTo16kMono(fileURL: audioFileURL)
-        defer {
-            if convertedURL != audioFileURL {
-                try? FileManager.default.removeItem(at: convertedURL)
-            }
+        guard FileManager.default.fileExists(atPath: audioFileURL.path) else {
+            viLog("音频文件不存在: \(audioFileURL.path)")
+            throw DashScopeError.audioConversionFailed
         }
 
-        // 2. 读取并 base64 编码
-        let audioData = try Data(contentsOf: convertedURL)
+        // 1. 转换为 16kHz mono WAV，直接返回 Data
+        let audioData = try convertTo16kMono(fileURL: audioFileURL)
         let base64Audio = audioData.base64EncodedString()
         viLog("DashScope ASR: file=\(audioFileURL.lastPathComponent), size=\(audioData.count) bytes")
 
-        // 3. 构建请求
+        // 2. 构建请求
         let url = URL(string: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

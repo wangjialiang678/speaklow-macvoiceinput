@@ -23,13 +23,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        // Start ASR Bridge only in streaming mode
+        // 仅在 streaming 模式启动 Bridge，并做幂等保护避免重复启动
         if appState.asrMode == .streaming {
-            do {
-                try asrBridgeManager.start()
+            if !asrBridgeManager.isRunning {
+                do {
+                    try asrBridgeManager.start()
+                } catch {
+                    viLog("Failed to start ASR Bridge: \(error)")
+                }
+            } else {
+                viLog("ASR Bridge 已在运行，跳过重复启动")
+            }
+
+            if asrBridgeManager.isRunning {
                 asrBridgeManager.startHealthMonitor()
-            } catch {
-                viLog("Failed to start ASR Bridge: \(error)")
             }
         } else {
             viLog("Batch mode: skipping ASR Bridge startup")

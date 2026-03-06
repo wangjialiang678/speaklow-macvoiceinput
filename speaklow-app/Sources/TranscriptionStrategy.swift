@@ -52,7 +52,8 @@ final class BatchStrategy: TranscriptionStrategy {
     func finish(recorder: AudioRecorder, overlay: RecordingOverlayManager) async throws -> String? {
         viLog("BatchStrategy: finish, getting audio file")
 
-        guard let fileURL = recorder.stopRecording() else {
+        // 在主线程停止录音，避免 AVAudioEngine 相关对象被跨线程访问
+        guard let fileURL = await MainActor.run(body: { recorder.stopRecording() }) else {
             viLog("BatchStrategy: no audio file")
             return nil
         }
