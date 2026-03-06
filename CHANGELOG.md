@@ -9,11 +9,27 @@ audience: human
 
 ## [Unreleased]
 
+### Added
+- Batch 模式三段状态提示：🎙 正在录音 → 🔍 正在识别 → ✨ 正在优化
+- Strategy 模式集成：AppState 通过 TranscriptionStrategy 协议调用 ASR，不再用 switch 分支
+- ASRBridgeManager 崩溃自动重启上限（连续 3 次后停止），避免无限循环
+- DashScopeClient afconvert 10 秒超时保护 + 音频文件存在性校验
+
 ### Fixed
+- 修复松开热键后 1 秒无反馈的延迟问题（移除所有路径的 transcribing indicator 延迟）
+- 修复 copiedToClipboard 路径下 preview panel（"正在优化..."）和 transcribing panel 未清理的面板泄漏
 - 修复长按热键不说话时热词 corpus 文本泄漏到 UI 的 bug（三层防线：bridge RMS 静默检测 + bridge isCorpusLeak 过滤 + Swift 端 isCorpusLeak 过滤）
 - 修复 Makefile 不自动编译 Go bridge 导致 binary 过期的问题（Go source 变化现在会触发重新编译）
+- 修复 ASRBridgeManager terminationHandler 与 stop() 的竞态条件（统一到主线程）
+- 修复 healthTimer 回调在 stop() 后仍可能触发 restart 的竞态
+- 修复 DashScopeClient convertTo16kMono 异常路径临时文件泄漏（defer 清理）
+- 修复 BatchStrategy.finish() 跨线程调用 recorder.stopRecording() 的线程安全问题
+- 修复 AppDelegate Bridge 启动与 asrMode didSet 的重复启动问题（幂等检查）
 
 ### Changed
+- 默认 ASR 模式从 batch 改为 streaming（实时预览）
+- 删除 129 行重复的 stopAndTranscribe()，统一为 stopAndTranscribeBatch()
+- ASRBridgeManager.start() 找不到二进制文件时抛出错误而非静默返回
 - 文档重组：按文档规范整理 docs/ 目录结构（specs/、handbook/、design/、research/）
 
 ## [0.5.0] - 2026-03-06

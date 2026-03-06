@@ -129,8 +129,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let initialAccessibility = AXIsProcessTrusted()
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
-        // ASR mode defaults: batch
-        let asrMode = ASRMode(rawValue: UserDefaults.standard.string(forKey: "asr_mode") ?? "batch") ?? .batch
+        // ASR mode defaults: streaming
+        let asrMode = ASRMode(rawValue: UserDefaults.standard.string(forKey: "asr_mode") ?? "streaming") ?? .streaming
 
         // LLM refinement defaults: enabled
         let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? true
