@@ -92,6 +92,10 @@ struct MenuBarView: View {
                 NotificationCenter.default.post(name: .showSettings, object: nil)
             }
 
+            Button("导出诊断日志...") {
+                DiagnosticExporter.exportWithSavePanel()
+            }
+
             Divider()
 
             Button("Quit SpeakLow") {
