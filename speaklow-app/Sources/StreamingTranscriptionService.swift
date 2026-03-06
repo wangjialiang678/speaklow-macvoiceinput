@@ -25,6 +25,7 @@ class StreamingTranscriptionService {
     private let bridgeURL: String
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
+    private var partialCount = 0
 
     private let logger = Logger(subsystem: "com.speaklow.app", category: "StreamingTranscription")
 
@@ -41,6 +42,7 @@ class StreamingTranscriptionService {
         }
 
         logger.info("connecting to \(url.absoluteString)")
+        viLog("WS connecting to \(url.absoluteString)")
 
         let session = URLSession(configuration: .default)
         webSocketTask = session.webSocketTask(with: url)
@@ -63,6 +65,7 @@ class StreamingTranscriptionService {
         webSocketTask?.send(.string(text)) { [weak self] error in
             if let error = error {
                 self?.logger.error("send start failed: \(error.localizedDescription)")
+                viLog("WS connect failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self?.delegate?.streamingDidFail(error: error)
                 }
@@ -132,6 +135,7 @@ class StreamingTranscriptionService {
 
             case .failure(let error):
                 self.logger.error("receive failed: \(error.localizedDescription)")
+                viLog("WS connect failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.delegate?.streamingDidFail(error: error)
                 }
@@ -150,6 +154,7 @@ class StreamingTranscriptionService {
         switch type {
         case "started":
             logger.info("bridge: started")
+            viLog("WS connected to \(bridgeURL)/v1/stream")
             isConnected = true
             DispatchQueue.main.async {
                 self.delegate?.streamingDidStart()
@@ -158,6 +163,10 @@ class StreamingTranscriptionService {
         case "partial":
             if let partialText = json["text"] as? String {
                 logger.debug("bridge: partial '\(partialText.prefix(30))'")
+                partialCount += 1
+                if partialCount % 5 == 1 {
+                    viLog("WS partial #\(partialCount): '\(partialText.prefix(40))'")
+                }
                 DispatchQueue.main.async {
                     self.delegate?.streamingDidReceivePartial(text: partialText)
                 }
@@ -166,6 +175,7 @@ class StreamingTranscriptionService {
         case "final":
             if let sentenceText = json["text"] as? String {
                 logger.info("bridge: final sentence '\(sentenceText.prefix(30))'")
+                viLog("WS final: '\(sentenceText.prefix(60))' (\(sentenceText.count) chars)")
                 DispatchQueue.main.async {
                     self.delegate?.streamingDidReceiveSentence(text: sentenceText)
                 }
@@ -173,6 +183,8 @@ class StreamingTranscriptionService {
 
         case "finished":
             logger.info("bridge: finished")
+            viLog("WS closed: finished (partials received: \(partialCount))")
+            partialCount = 0
             isConnected = false
             DispatchQueue.main.async {
                 self.delegate?.streamingDidFinish()
@@ -181,6 +193,8 @@ class StreamingTranscriptionService {
         case "error":
             let errorMsg = json["error"] as? String ?? "unknown"
             logger.error("bridge: error \(errorMsg)")
+            viLog("WS closed: bridge error — \(errorMsg)")
+            partialCount = 0
             isConnected = false
             DispatchQueue.main.async {
                 self.delegate?.streamingDidFail(error: StreamingError.bridgeError(errorMsg))
