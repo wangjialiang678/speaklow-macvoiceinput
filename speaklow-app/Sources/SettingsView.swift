@@ -41,6 +41,18 @@ struct SettingsView: View {
                     }
             }
 
+            Section("识别模式") {
+                Picker("模式", selection: $appState.asrMode) {
+                    ForEach(ASRMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text("标准：录完后一次性识别 ｜ 实时预览：边说边显示（需启动后台服务）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("AI 文字优化") {
                 Toggle("启用 AI 优化", isOn: $appState.llmRefineEnabled)
 
@@ -58,8 +70,10 @@ struct SettingsView: View {
                 }
             }
 
-            Section("ASR Bridge") {
-                ASRBridgeStatusView()
+            if appState.asrMode == .streaming {
+                Section("ASR Bridge") {
+                    ASRBridgeStatusView()
+                }
             }
         }
         .formStyle(.grouped)

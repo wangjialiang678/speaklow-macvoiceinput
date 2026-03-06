@@ -5,8 +5,12 @@ private let bridgeLog = OSLog(subsystem: "com.speaklow.app", category: "ASRBridg
 
 class ASRBridgeManager {
     private var process: Process?
+    private var isStopping = false
+    private var healthTimer: Timer?
+    private var consecutiveHealthFailures = 0
 
     func start() throws {
+        isStopping = false
         // 1. Find asr-bridge binary
         let bundlePath = Bundle.main.bundlePath
         let primaryPath = bundlePath + "/Contents/MacOS/asr-bridge"
@@ -48,7 +52,14 @@ class ASRBridgeManager {
         proc.terminationHandler = { [weak self] process in
             os_log(.info, log: bridgeLog, "asr-bridge terminated with exit code %d", process.terminationStatus)
             DispatchQueue.main.async {
-                self?.process = nil
+                guard let self else { return }
+                self.process = nil
+                if !self.isStopping {
+                    viLog("Bridge crashed (exit \(process.terminationStatus)), auto-restarting in 1s...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                        try? self?.start()
+                    }
+                }
             }
         }
 
@@ -72,6 +83,8 @@ class ASRBridgeManager {
     }
 
     func stop() {
+        isStopping = true
+        stopHealthMonitor()
         os_log(.info, log: bridgeLog, "Stopping asr-bridge...")
         process?.terminate()
         process?.waitUntilExit()
@@ -80,6 +93,41 @@ class ASRBridgeManager {
     }
 
     var isRunning: Bool { process?.isRunning ?? false }
+
+    // MARK: - Health Monitor
+
+    /// 启动定时健康检查（仅 streaming 模式需要）
+    func startHealthMonitor() {
+        stopHealthMonitor()
+        consecutiveHealthFailures = 0
+        viLog("Bridge health monitor: started (30s interval)")
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task {
+                let service = TranscriptionService()
+                let healthy = await service.checkHealth()
+                await MainActor.run {
+                    if healthy {
+                        self.consecutiveHealthFailures = 0
+                    } else {
+                        self.consecutiveHealthFailures += 1
+                        viLog("Bridge health check failed (\(self.consecutiveHealthFailures) consecutive)")
+                        if self.consecutiveHealthFailures >= 2 {
+                            viLog("Bridge health: 2 consecutive failures, auto-restarting...")
+                            self.consecutiveHealthFailures = 0
+                            try? self.restart()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 停止定时健康检查
+    func stopHealthMonitor() {
+        healthTimer?.invalidate()
+        healthTimer = nil
+    }
 
     /// Restart the bridge process (stop then start).
     func restart() throws {

@@ -20,14 +20,6 @@ enum DashScopeError: LocalizedError {
     }
 }
 
-// MARK: - Refine Style
-
-enum RefineStyle: String {
-    case `default` = "default"
-    case business = "business"
-    case chat = "chat"
-}
-
 // MARK: - DashScopeClient
 
 /// Swift 端直接调用 DashScope API（不经过 Go bridge）

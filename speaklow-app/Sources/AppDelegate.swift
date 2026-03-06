@@ -23,11 +23,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        // Start ASR Bridge
-        do {
-            try asrBridgeManager.start()
-        } catch {
-            print("Failed to start ASR Bridge: \(error)")
+        // Start ASR Bridge only in streaming mode
+        if appState.asrMode == .streaming {
+            do {
+                try asrBridgeManager.start()
+                asrBridgeManager.startHealthMonitor()
+            } catch {
+                viLog("Failed to start ASR Bridge: \(error)")
+            }
+        } else {
+            viLog("Batch mode: skipping ASR Bridge startup")
         }
 
         if !appState.hasCompletedSetup {

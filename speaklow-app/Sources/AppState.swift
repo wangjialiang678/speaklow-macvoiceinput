@@ -53,6 +53,23 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var statusText: String = "Ready"
     @Published var hasAccessibility = false
 
+    @Published var asrMode: ASRMode {
+        didSet {
+            UserDefaults.standard.set(asrMode.rawValue, forKey: "asr_mode")
+            viLog("ASR mode changed to \(asrMode.rawValue)")
+            // Bridge 生命周期跟随模式
+            if asrMode == .streaming {
+                if let bridge = bridgeManager, !bridge.isRunning {
+                    try? bridge.start()
+                }
+                bridgeManager?.startHealthMonitor()
+            } else {
+                bridgeManager?.stopHealthMonitor()
+                bridgeManager?.stop()
+            }
+        }
+    }
+
     @Published var llmRefineEnabled: Bool {
         didSet { UserDefaults.standard.set(llmRefineEnabled, forKey: "llm_refine_enabled") }
     }
@@ -102,10 +119,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let initialAccessibility = AXIsProcessTrusted()
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
+        // ASR mode defaults: batch
+        let asrMode = ASRMode(rawValue: UserDefaults.standard.string(forKey: "asr_mode") ?? "batch") ?? .batch
+
         // LLM refinement defaults: enabled
         let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? true
         let style = RefineStyle(rawValue: UserDefaults.standard.string(forKey: "refine_style") ?? "default") ?? .default
 
+        self.asrMode = asrMode
         self.hasCompletedSetup = hasCompletedSetup
         self.selectedHotkey = selectedHotkey
         self.hasAccessibility = initialAccessibility
@@ -251,13 +272,18 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func handleHotkeyUp() {
-        viLog("handleHotkeyUp() fired, isRecording=\(isRecording), isStreaming=\(isStreaming)")
+        viLog("handleHotkeyUp() fired, isRecording=\(isRecording), isStreaming=\(isStreaming), asrMode=\(asrMode.rawValue)")
         guard isRecording else { return }
 
-        if isStreaming {
-            stopStreamingRecording()
-        } else {
-            stopAndTranscribe()
+        switch asrMode {
+        case .batch:
+            stopAndTranscribeBatch()
+        case .streaming:
+            if isStreaming {
+                stopStreamingRecording()
+            } else {
+                stopAndTranscribe()
+            }
         }
     }
 
@@ -326,10 +352,92 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func beginRecording() {
-        os_log(.info, log: recordingLog, "beginRecording() entered")
+        os_log(.info, log: recordingLog, "beginRecording() entered, asrMode=\(self.asrMode.rawValue)")
         errorMessage = nil
         statusText = "Starting..."
 
+        switch asrMode {
+        case .batch:
+            _beginRecordingBatch()
+        case .streaming:
+            _beginRecordingStreaming()
+        }
+    }
+
+    /// Batch 模式：直接开始录音，无需 bridge
+    private func _beginRecordingBatch() {
+        viLog("Batch mode: starting recording (no bridge needed)")
+
+        // Show initializing dots only if engine takes longer than 0.5s
+        var overlayShown = false
+        let initTimer = DispatchSource.makeTimerSource(queue: .main)
+        initTimer.schedule(deadline: .now() + 0.5)
+        initTimer.setEventHandler { [weak self] in
+            guard let self, !overlayShown else { return }
+            overlayShown = true
+            self.overlayManager.showInitializing()
+        }
+        initTimer.resume()
+
+        let deviceUID = selectedMicrophoneID
+        audioRecorder.onRecordingReady = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                initTimer.cancel()
+                self.recordingStartTime = Date()
+                self.statusText = "Recording..."
+                if overlayShown {
+                    self.overlayManager.transitionToRecording()
+                } else {
+                    self.overlayManager.showRecording()
+                }
+                overlayShown = true
+                NSSound(named: "Tink")?.play()
+            }
+        }
+
+        audioRecorder.onSilenceTimeout = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                initTimer.cancel()
+                self.audioLevelCancellable?.cancel()
+                self.audioLevelCancellable = nil
+                self.isRecording = false
+                self.statusText = "麦克风没有声音"
+                self.errorMessage = "麦克风没有声音"
+                NSSound(named: "Basso")?.play()
+                self.overlayManager.showError(
+                    title: "麦克风没有声音",
+                    suggestion: "请检查麦克风是否正常连接"
+                )
+            }
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                try self.audioRecorder.startRecording(deviceUID: deviceUID)
+                DispatchQueue.main.async {
+                    self.audioLevelCancellable = self.audioRecorder.$audioLevel
+                        .receive(on: DispatchQueue.main)
+                        .sink { [weak self] level in
+                            self?.overlayManager.updateAudioLevel(level)
+                        }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    initTimer.cancel()
+                    self.isRecording = false
+                    self.errorMessage = self.formattedRecordingStartError(error)
+                    self.statusText = "Error"
+                    self.overlayManager.dismiss()
+                }
+            }
+        }
+    }
+
+    /// Streaming 模式：先检查 bridge 再开始录音
+    private func _beginRecordingStreaming() {
         // Pre-flight: check if asr-bridge is reachable; auto-restart if not
         let healthService = TranscriptionService()
         Task {
@@ -483,6 +591,120 @@ final class AppState: ObservableObject, @unchecked Sendable {
         return "Failed to start recording: \(error.localizedDescription)"
     }
 
+    // MARK: - Batch Mode Stop & Transcribe
+
+    private func stopAndTranscribeBatch() {
+        viLog("stopAndTranscribeBatch() entered")
+        audioLevelCancellable?.cancel()
+        audioLevelCancellable = nil
+
+        let elapsed = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0.0
+        if elapsed < 0.2 {
+            viLog("Batch: 录音时长 \(Int(elapsed * 1000))ms < 200ms，丢弃")
+            _ = audioRecorder.stopRecording()
+            recordingStartTime = nil
+            isRecording = false
+            overlayManager.dismiss()
+            return
+        }
+        recordingStartTime = nil
+
+        guard let fileURL = audioRecorder.stopRecording() else {
+            viLog("Batch: stopRecording() returned nil")
+            isRecording = false
+            statusText = "Error"
+            errorMessage = "No audio recorded"
+            overlayManager.dismiss()
+            return
+        }
+
+        isRecording = false
+        isTranscribing = true
+        statusText = "识别中..."
+        NSSound(named: "Pop")?.play()
+        overlayManager.slideUpToNotch { }
+
+        // 延迟显示 "识别中" overlay
+        let indicatorDelay = transcribingIndicatorDelay
+        transcribingIndicatorTask?.cancel()
+        transcribingIndicatorTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(indicatorDelay * 1_000_000_000))
+                guard self?.isTranscribing == true else { return }
+                await MainActor.run { [weak self] in
+                    self?.overlayManager.showTranscribing()
+                }
+            } catch {}
+        }
+
+        let client = DashScopeClient.shared
+        viLog("Batch: starting DashScope transcription, file=\(fileURL.lastPathComponent)")
+
+        Task {
+            do {
+                let rawTranscript = try await client.transcribe(audioFileURL: fileURL)
+                let trimmed = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                viLog("Batch: transcription result='\(trimmed.prefix(40))' (length=\(trimmed.count))")
+
+                if isCorpusLeak(trimmed) || trimmed.isEmpty {
+                    await MainActor.run {
+                        self.transcribingIndicatorTask?.cancel()
+                        self.isTranscribing = false
+                        self.statusText = "未检测到语音"
+                        NSSound(named: "Basso")?.play()
+                        self.overlayManager.showError(
+                            title: "未检测到语音",
+                            suggestion: "请靠近麦克风说话"
+                        )
+                    }
+                    return
+                }
+
+                await MainActor.run {
+                    self.transcribingIndicatorTask?.cancel()
+                    self.isTranscribing = false
+                    self.lastTranscript = trimmed
+
+                    if self.llmRefineEnabled {
+                        self.overlayManager.updatePreviewText("✨ 正在优化...")
+                        viLog("Batch: starting DashScope refine, style=\(self.refineStyle.rawValue)")
+                        let style = self.refineStyle
+                        Task {
+                            let refined = await DashScopeClient.shared.refine(text: trimmed, style: style)
+                            await MainActor.run {
+                                self.batchInsertAndFinish(originalText: trimmed, finalText: refined)
+                            }
+                        }
+                    } else {
+                        self.batchInsertAndFinish(originalText: trimmed, finalText: trimmed)
+                    }
+                }
+            } catch {
+                viLog("Batch: transcription FAILED: \(error.localizedDescription)")
+                let (errTitle, errSuggestion) = self.userFriendlyTranscriptionError(error)
+                await MainActor.run {
+                    self.transcribingIndicatorTask?.cancel()
+                    self.isTranscribing = false
+                    self.errorMessage = error.localizedDescription
+                    self.statusText = errTitle
+                    NSSound(named: "Basso")?.play()
+                    self.overlayManager.showError(title: errTitle, suggestion: errSuggestion)
+                }
+            }
+
+            // 5秒后重置状态栏
+            await MainActor.run {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    if self.statusText.hasPrefix("已插入") || self.statusText.hasPrefix("已粘贴") ||
+                       self.statusText.hasPrefix("已复制") || self.statusText.hasPrefix("识别失败") ||
+                       self.statusText == "未检测到语音" {
+                        self.statusText = "Ready"
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Streaming Recording
 
     private func stopStreamingRecording() {
@@ -618,7 +840,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                             viLog("Batch: starting LLM refine, style=\(self.refineStyle.rawValue)")
                             let style = self.refineStyle
                             Task {
-                                let refined = await TextRefineService.refine(text: trimmed, style: style)
+                                let refined = await DashScopeClient.shared.refine(text: trimmed, style: style)
                                 await MainActor.run {
                                     self.batchInsertAndFinish(originalText: trimmed, finalText: refined)
                                 }
@@ -808,7 +1030,7 @@ extension AppState: StreamingTranscriptionDelegate {
         pendingRefineCount += 1
         let style = refineStyle
         Task {
-            let refined = await TextRefineService.refine(text: text, style: style)
+            let refined = await DashScopeClient.shared.refine(text: text, style: style)
             await MainActor.run {
                 self.sentenceRefineCache[text] = refined
                 self.pendingRefineCount = max(0, self.pendingRefineCount - 1)
@@ -970,7 +1192,7 @@ extension AppState: StreamingTranscriptionDelegate {
             viLog("applyFinalTranscript: starting LLM refine, style=\(refineStyle.rawValue)")
             let style = refineStyle
             Task {
-                let refined = await TextRefineService.refine(text: text, style: style)
+                let refined = await DashScopeClient.shared.refine(text: text, style: style)
                 await MainActor.run {
                     self.insertAndFinish(originalText: text, finalText: refined)
                 }
