@@ -34,6 +34,7 @@ $(MACOS_DIR)/$(APP_NAME): $(SOURCES) Info.plist $(ASR_BRIDGE)
 	@plutil -replace CFBundleDisplayName -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
 	@plutil -replace CFBundleExecutable -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
 	@plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" "$(CONTENTS)/Info.plist"
+	@plutil -replace BuildDate -string "$(shell date +%Y-%m-%d)" "$(CONTENTS)/Info.plist"
 	@if [ -f "$(ASR_BRIDGE)" ]; then cp "$(ASR_BRIDGE)" "$(MACOS_DIR)/asr-bridge"; echo "Copied asr-bridge"; fi
 	@if [ -d Resources ] && [ -f Resources/AppIcon.icns ]; then cp Resources/AppIcon.icns "$(RESOURCES)/"; fi
 	@if [ -f Resources/hotwords.txt ]; then cp Resources/hotwords.txt "$(RESOURCES)/"; fi
