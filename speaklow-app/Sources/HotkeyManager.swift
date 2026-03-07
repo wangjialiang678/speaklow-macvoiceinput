@@ -10,9 +10,9 @@ enum HotkeyOption: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .fnKey: return "Fn (Globe) Key"
-        case .rightOption: return "Right Option Key"
-        case .f5: return "F5 Key"
+        case .fnKey: return "Fn / 地球仪键"
+        case .rightOption: return "右 Option 键"
+        case .f5: return "F5 键"
         }
     }
 

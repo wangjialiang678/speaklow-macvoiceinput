@@ -11,7 +11,7 @@ enum ASRMode: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .batch: return "标准"
+        case .batch: return "无预览"
         case .streaming: return "实时预览"
         }
     }
