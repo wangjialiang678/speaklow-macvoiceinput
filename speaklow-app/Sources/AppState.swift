@@ -98,6 +98,48 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
     @Published var availableMicrophones: [AudioDevice] = []
 
+    // MARK: - 音效音量配置
+    @Published var soundVolumeStart: Float {
+        didSet { UserDefaults.standard.set(soundVolumeStart, forKey: "sound_volume_start") }
+    }
+    @Published var soundVolumeStop: Float {
+        didSet { UserDefaults.standard.set(soundVolumeStop, forKey: "sound_volume_stop") }
+    }
+    @Published var soundVolumeSuccess: Float {
+        didSet { UserDefaults.standard.set(soundVolumeSuccess, forKey: "sound_volume_success") }
+    }
+    @Published var soundVolumeFallback: Float {
+        didSet { UserDefaults.standard.set(soundVolumeFallback, forKey: "sound_volume_fallback") }
+    }
+    @Published var soundVolumeError: Float {
+        didSet { UserDefaults.standard.set(soundVolumeError, forKey: "sound_volume_error") }
+    }
+
+    // MARK: - Usage Statistics
+    @Published var statsTodayCount: Int {
+        didSet { UserDefaults.standard.set(statsTodayCount, forKey: "stats_today_count") }
+    }
+    @Published var statsTodayChars: Int {
+        didSet { UserDefaults.standard.set(statsTodayChars, forKey: "stats_today_chars") }
+    }
+    @Published var statsTodayDuration: TimeInterval {
+        didSet { UserDefaults.standard.set(statsTodayDuration, forKey: "stats_today_duration") }
+    }
+    @Published var statsTotalCount: Int {
+        didSet { UserDefaults.standard.set(statsTotalCount, forKey: "stats_total_count") }
+    }
+    @Published var statsTotalChars: Int {
+        didSet { UserDefaults.standard.set(statsTotalChars, forKey: "stats_total_chars") }
+    }
+    private var statsDate: String {
+        didSet { UserDefaults.standard.set(statsDate, forKey: "stats_date") }
+    }
+
+    var averageSpeakingSpeed: Int {
+        guard statsTodayDuration > 0 else { return 0 }
+        return Int(Double(statsTodayChars) / (statsTodayDuration / 60.0))
+    }
+
     let audioRecorder = AudioRecorder()
     let hotkeyManager = HotkeyManager()
     let overlayManager = RecordingOverlayManager()
@@ -158,14 +200,49 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.llmRefineEnabled = llmEnabled
         self.refineStyle = style
 
+        // 音效音量（UserDefaults 未设置时用默认值）
+        let ud = UserDefaults.standard
+        self.soundVolumeStart = ud.object(forKey: "sound_volume_start") as? Float ?? 0.8
+        self.soundVolumeStop = ud.object(forKey: "sound_volume_stop") as? Float ?? 1.0
+        self.soundVolumeSuccess = ud.object(forKey: "sound_volume_success") as? Float ?? 0.1
+        self.soundVolumeFallback = ud.object(forKey: "sound_volume_fallback") as? Float ?? 1.0
+        self.soundVolumeError = ud.object(forKey: "sound_volume_error") as? Float ?? 1.0
+
+        let today = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date()) }()
+        self.statsDate = UserDefaults.standard.string(forKey: "stats_date") ?? today
+        self.statsTodayCount = UserDefaults.standard.integer(forKey: "stats_today_count")
+        self.statsTodayChars = UserDefaults.standard.integer(forKey: "stats_today_chars")
+        self.statsTodayDuration = UserDefaults.standard.double(forKey: "stats_today_duration")
+        self.statsTotalCount = UserDefaults.standard.integer(forKey: "stats_total_count")
+        self.statsTotalChars = UserDefaults.standard.integer(forKey: "stats_total_chars")
+        if self.statsDate != today {
+            self.statsDate = today
+            self.statsTodayCount = 0
+            self.statsTodayChars = 0
+            self.statsTodayDuration = 0
+        }
+
         refreshAvailableMicrophones()
         installAudioDeviceListener()
 
         viLog("AppState init complete. hotkey=\(selectedHotkey.rawValue), setup=\(hasCompletedSetup), accessibility=\(initialAccessibility)")
+        viLog("Sound volumes: start=\(soundVolumeStart), stop=\(soundVolumeStop), success=\(soundVolumeSuccess), fallback=\(soundVolumeFallback), error=\(soundVolumeError)")
     }
 
     deinit {
         removeAudioDeviceListener()
+    }
+
+    /// 播放系统音效，音量由配置控制
+    func playSound(_ name: String, volume: Float) {
+        guard volume > 0 else {
+            viLog("Sound '\(name)' skipped (volume=0)")
+            return
+        }
+        let sound = NSSound(named: NSSound.Name(name))
+        sound?.volume = volume
+        sound?.play()
+        viLog("Sound '\(name)' played at volume=\(volume)")
     }
 
     private func removeAudioDeviceListener() {
@@ -196,6 +273,21 @@ final class AppState: ObservableObject, @unchecked Sendable {
         return audioDir
     }
 
+    func recordTranscriptionStats(text: String, duration: TimeInterval) {
+        let today = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date()) }()
+        if statsDate != today {
+            statsDate = today
+            statsTodayCount = 0
+            statsTodayChars = 0
+            statsTodayDuration = 0
+        }
+        statsTodayCount += 1
+        statsTodayChars += text.count
+        statsTodayDuration += duration
+        statsTotalCount += 1
+        statsTotalChars += text.count
+    }
+
     // MARK: - Accessibility
 
     func startAccessibilityPolling() {
@@ -213,7 +305,16 @@ final class AppState: ObservableObject, @unchecked Sendable {
         accessibilityTimer = nil
     }
 
+    private var lastAccessibilityPromptTime: Date = .distantPast
+
+    /// 打开辅助功能设置提示，60 秒内不重复弹出
     func openAccessibilitySettings() {
+        let now = Date()
+        guard now.timeIntervalSince(lastAccessibilityPromptTime) > 60 else {
+            viLog("openAccessibilitySettings: suppressed (last prompt was \(String(format: "%.0f", now.timeIntervalSince(lastAccessibilityPromptTime)))s ago)")
+            return
+        }
+        lastAccessibilityPromptTime = now
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
         AXIsProcessTrustedWithOptions(options)
     }
@@ -400,7 +501,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     self.isRecording = false
                     self.statusText = "语音功能异常"
                     self.errorMessage = "语音功能出了问题"
-                    NSSound(named: "Basso")?.play()
+                    self.playSound("Basso", volume: self.soundVolumeError)
                     self.overlayManager.showError(
                         title: "语音功能出了问题",
                         suggestion: "请退出并重新打开 SpeakLow"
@@ -449,7 +550,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 }
                 self.overlayManager.updatePreviewText("🎙 正在录音...")
                 overlayShown = true
-                NSSound(named: "Tink")?.play()
+                self.playSound("Tink", volume: self.soundVolumeStart)
             }
         }
 
@@ -462,7 +563,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 self.isRecording = false
                 self.statusText = "麦克风没有声音"
                 self.errorMessage = "麦克风没有声音"
-                NSSound(named: "Basso")?.play()
+                self.playSound("Basso", volume: self.soundVolumeError)
                 self.overlayManager.showError(
                     title: "麦克风没有声音",
                     suggestion: "请检查麦克风是否正常连接"
@@ -520,7 +621,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     self.isRecording = false
                     self.statusText = "语音功能异常"
                     self.errorMessage = "语音功能出了问题"
-                    NSSound(named: "Basso")?.play()
+                    self.playSound("Basso", volume: self.soundVolumeError)
                     self.overlayManager.showError(
                         title: "语音功能出了问题",
                         suggestion: "请退出并重新打开 SpeakLow"
@@ -583,7 +684,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     self.overlayManager.showRecording()
                 }
                 overlayShown = true
-                NSSound(named: "Tink")?.play()
+                self.playSound("Tink", volume: self.soundVolumeStart)
             }
         }
 
@@ -597,7 +698,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 self.isRecording = false
                 self.statusText = "麦克风没有声音"
                 self.errorMessage = "麦克风没有声音"
-                NSSound(named: "Basso")?.play()
+                self.playSound("Basso", volume: self.soundVolumeError)
                 self.overlayManager.showError(
                     title: "麦克风没有声音",
                     suggestion: "请检查麦克风是否正常连接"
@@ -670,7 +771,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         isRecording = false
         isTranscribing = true
         statusText = "识别中..."
-        NSSound(named: "Pop")?.play()
+        self.playSound("Pop", volume: self.soundVolumeStop)
         overlayManager.showTranscribing()
         overlayManager.updatePreviewText("🔍 正在识别...")
 
@@ -684,7 +785,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     await MainActor.run {
                         self.isTranscribing = false
                         self.statusText = "未检测到语音"
-                        NSSound(named: "Basso")?.play()
+                        self.playSound("Basso", volume: self.soundVolumeError)
                         self.overlayManager.showError(
                             title: "未检测到语音",
                             suggestion: "请靠近麦克风说话"
@@ -718,7 +819,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     self.isTranscribing = false
                     self.errorMessage = error.localizedDescription
                     self.statusText = errTitle
-                    NSSound(named: "Basso")?.play()
+                    self.playSound("Basso", volume: self.soundVolumeError)
                     self.overlayManager.showError(title: errTitle, suggestion: errSuggestion)
                 }
             }
@@ -968,7 +1069,7 @@ extension AppState: StreamingTranscriptionDelegate {
 
         if fullText.isEmpty {
             statusText = "未检测到语音"
-            NSSound(named: "Basso")?.play()
+            self.playSound("Basso", volume: self.soundVolumeError)
             overlayManager.dismissPreviewPanel()
             overlayManager.showError(title: "未检测到语音", suggestion: "请靠近麦克风说话")
             return
@@ -1131,11 +1232,11 @@ extension AppState: StreamingTranscriptionDelegate {
 
         overlayManager.dismissPreviewPanel()
         if result == .copiedToClipboard {
-            NSSound(named: "Purr")?.play()
+            self.playSound("Purr", volume: self.soundVolumeFallback)
             overlayManager.showTextResult(finalText)
             openAccessibilitySettings()
         } else {
-            NSSound(named: "Glass")?.play()
+            self.playSound("Glass", volume: self.soundVolumeSuccess)
             overlayManager.showDone()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
@@ -1167,21 +1268,21 @@ extension AppState: StreamingTranscriptionDelegate {
         switch insertResult {
         case .insertedViaAX:
             statusText = "已插入: \(finalText.prefix(20))..."
-            NSSound(named: "Glass")?.play()
+            self.playSound("Glass", volume: self.soundVolumeSuccess)
             overlayManager.showDone()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                 self.overlayManager.dismiss()
             }
         case .pastedViaClipboard:
             statusText = "已粘贴: \(finalText.prefix(20))..."
-            NSSound(named: "Glass")?.play()
+            self.playSound("Glass", volume: self.soundVolumeSuccess)
             overlayManager.showDone()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                 self.overlayManager.dismiss()
             }
         case .copiedToClipboard:
             statusText = "已复制到剪贴板（请手动粘贴）"
-            NSSound(named: "Purr")?.play()
+            self.playSound("Purr", volume: self.soundVolumeFallback)
             overlayManager.showTextResult(finalText)
             openAccessibilitySettings()
         }
@@ -1217,7 +1318,7 @@ extension AppState: StreamingTranscriptionDelegate {
             let (errTitle, errSuggestion) = userFriendlyTranscriptionError(error)
             statusText = errTitle
             errorMessage = error.localizedDescription
-            NSSound(named: "Basso")?.play()
+            self.playSound("Basso", volume: self.soundVolumeError)
             overlayManager.showError(title: errTitle, suggestion: errSuggestion)
             return
         }
