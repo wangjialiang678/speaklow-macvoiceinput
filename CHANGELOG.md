@@ -10,12 +10,19 @@ audience: human
 ## [Unreleased]
 
 ### Added
+- 启动时辅助功能权限运行时验证：用 `CGEvent.tapCreate()` 替代不可靠的 `AXIsProcessTrusted()`，准确检测权限 stale 状态
+- 文字结果面板关闭按钮（权限异常时全局事件监听失效的保底关闭方式）
 - Batch 模式三段状态提示：🎙 正在录音 → 🔍 正在识别 → ✨ 正在优化
 - Strategy 模式集成：AppState 通过 TranscriptionStrategy 协议调用 ASR，不再用 switch 分支
 - ASRBridgeManager 崩溃自动重启上限（连续 3 次后停止），避免无限循环
 - DashScopeClient afconvert 10 秒超时保护 + 音频文件存在性校验
 
 ### Fixed
+- 修复权限 stale 时无提示、无法插入文本的问题（`AXIsProcessTrusted()` 返回 true 但 CGEvent 被丢弃）
+- 修复 AXWebArea（VS Code webview）粘贴验证误判：before=0, after=0 不再视为粘贴失败
+- 修复快速按松热键后初始化动画（三个点）不消失的问题（initTimer 竞态条件）
+- 修复文字结果面板在新录音开始时未清理的残留问题
+- 修复流式录音中 stall detector 误杀活跃录音的问题（已移除 stall detector）
 - 修复松开热键后 1 秒无反馈的延迟问题（移除所有路径的 transcribing indicator 延迟）
 - 修复 copiedToClipboard 路径下 preview panel（"正在优化..."）和 transcribing panel 未清理的面板泄漏
 - 修复长按热键不说话时热词 corpus 文本泄漏到 UI 的 bug（三层防线：bridge RMS 静默检测 + bridge isCorpusLeak 过滤 + Swift 端 isCorpusLeak 过滤）

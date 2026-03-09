@@ -97,9 +97,9 @@ Key env vars:
 
 - macOS 13.0+, universal binary (ARM64/x86_64)
 - Compiled with `swiftc` directly (no Xcode project/SPM)
-- Accessibility API (`AXUIElementCreateApplication`) is unreliable — `AXIsProcessTrusted()` flickers between true/false; the app does not block recording on this check
+- **Accessibility permission detection**: `AXIsProcessTrusted()` is unreliable — returns true even when CGEvent posting is silently dropped (stale permission after recompile). The app uses `CGEvent.tapCreate()` at launch for runtime verification (see `docs/design/2026-03-09-accessibility-permission-detection.md`)
 - Electron apps (VS Code, Slack) accept AX writes silently but don't apply them — TextInserter verifies by read-back
-- Clipboard paste fallback (`Cmd+V`) via CGEvent is silently dropped when AX permissions are in intermediate state (e.g., after app update) — `AXIsProcessTrusted()` may return true but events are still dropped. TextInserter verifies paste success by comparing AX value length before/after with 250ms delay
+- Clipboard paste fallback (`Cmd+V`) via CGEvent is silently dropped when AX permissions are stale — TextInserter verifies paste success by comparing AX value length before/after with 250ms delay. AXWebArea (VS Code webview) always returns empty value; treated as inconclusive (assume success)
 
 ## Conventions
 

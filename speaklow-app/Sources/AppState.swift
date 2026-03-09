@@ -171,6 +171,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var recordingStartTime: Date?
     private var lastPartialText: String = ""
     private var safetyTimeoutWork: DispatchWorkItem?
+    private var engineInitTimer: DispatchSourceTimer?
     private var sentenceRefineCache: [String: String] = [:]
     private var pendingRefineCount = 0
 
@@ -306,7 +307,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var lastAccessibilityPromptTime: Date = .distantPast
     private var hasShownAccessibilityPrompt = false
 
-    /// 打开辅助功能设置提示，60 秒内不重复弹出
+    /// 引导用户修复辅助功能权限。
+    /// AXIsProcessTrustedWithOptions(prompt: true) 在权限 stale 时不弹窗（返回 true 但 CGEvent 被丢弃），
+    /// 所以直接打开系统设置的辅助功能页面，让用户手动 toggle。
     func openAccessibilitySettings() {
         let now = Date()
         guard now.timeIntervalSince(lastAccessibilityPromptTime) > 60 else {
@@ -314,8 +317,64 @@ final class AppState: ObservableObject, @unchecked Sendable {
             return
         }
         lastAccessibilityPromptTime = now
+
+        // 先尝试系统弹窗（首次安装有效）
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
+        let trusted = AXIsProcessTrustedWithOptions(options)
+
+        if trusted {
+            // 已 "trusted" 但 CGEvent 仍被丢弃 → 权限 stale（重编译后常见）
+            // 直接打开系统设置辅助功能页面，让用户 toggle off/on
+            viLog("openAccessibilitySettings: AX reports trusted but paste failed — opening System Settings directly")
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+
+    /// 启动时检测辅助功能权限是否真正可用。
+    ///
+    /// `AXIsProcessTrusted()` 检查 TCC 数据库条目，在权限 stale（重编译后）时仍返回 true。
+    /// `CGEvent.tapCreate()` 做运行时代码签名验证，更可靠地反映 CGEvent 能否实际发送。
+    ///
+    /// 三种情况：
+    /// 1. AX 未授权 → 弹系统权限对话框（首次安装）
+    /// 2. AX "已授权" 但 tapCreate 失败 → 权限 stale → 打开系统设置引导 toggle
+    /// 3. AX 已授权且 tapCreate 成功 → 权限正常
+    func checkAccessibilityOnLaunch() {
+        if !AXIsProcessTrusted() {
+            viLog("checkAccessibilityOnLaunch: AX not trusted, requesting permission")
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+            return
+        }
+
+        // AXIsProcessTrusted() 返回 true，但可能是 stale。
+        // 用 CGEvent.tapCreate 做运行时验证。
+        if isCGEventPermissionWorking() {
+            viLog("checkAccessibilityOnLaunch: AX trusted + CGEvent tap OK — permissions working")
+        } else {
+            viLog("checkAccessibilityOnLaunch: AX trusted but CGEvent tap FAILED — permissions stale, opening System Settings")
+            openAccessibilitySettings()
+        }
+    }
+
+    /// 通过创建 CGEvent tap 验证 CGEvent 发送权限是否真正可用。
+    /// CGEvent.tapCreate 做运行时代码签名验证，比 AXIsProcessTrusted() 更准确。
+    private func isCGEventPermissionWorking() -> Bool {
+        let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .listenOnly,
+            eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+            callback: { _, _, event, _ in Unmanaged.passRetained(event) },
+            userInfo: nil
+        )
+        if let tap = tap {
+            CFMachPortInvalidate(tap)
+            return true
+        }
+        return false
     }
 
     // MARK: - Launch at Login
@@ -439,6 +498,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         let t0 = CFAbsoluteTimeGetCurrent()
         viLog("startRecording() entered")
+        // 清理上一次的残留 UI（text result panel、error overlay 等）
+        overlayManager.dismiss()
         // Cancel any leftover safety timeout from a previous session
         safetyTimeoutWork?.cancel()
         safetyTimeoutWork = nil
@@ -522,6 +583,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         // Show initializing dots only if engine takes longer than 0.5s
         var overlayShown = false
+        engineInitTimer?.cancel()
         let initTimer = DispatchSource.makeTimerSource(queue: .main)
         initTimer.schedule(deadline: .now() + 0.5)
         initTimer.setEventHandler { [weak self] in
@@ -530,6 +592,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             self.overlayManager.showInitializing()
         }
         initTimer.resume()
+        engineInitTimer = initTimer
 
         let deviceUID = selectedMicrophoneID
         audioRecorder.onRecordingReady = { [weak self] in
@@ -624,13 +687,20 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 }
                 return
             }
-            await MainActor.run { self._beginRecordingAfterHealthCheck() }
+            await MainActor.run {
+                guard self.isRecording else {
+                    viLog("Pre-flight: user released key during health check, aborting")
+                    return
+                }
+                self._beginRecordingAfterHealthCheck()
+            }
         }
     }
 
     private func _beginRecordingAfterHealthCheck() {
         // Show initializing dots only if engine takes longer than 0.5s to start
         var overlayShown = false
+        engineInitTimer?.cancel()
         let initTimer = DispatchSource.makeTimerSource(queue: .main)
         initTimer.schedule(deadline: .now() + 0.5)
         initTimer.setEventHandler { [weak self] in
@@ -640,6 +710,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             self.overlayManager.showInitializing()
         }
         initTimer.resume()
+        engineInitTimer = initTimer
 
         // Set up streaming
         let streaming = StreamingTranscriptionService()
@@ -749,6 +820,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func stopAndTranscribeBatch(using finishStrategy: TranscriptionStrategy? = nil) {
         let strategyToUse = finishStrategy ?? strategy
         viLog("stopAndTranscribeBatch() entered, strategy=\(String(describing: type(of: strategyToUse)))")
+        engineInitTimer?.cancel()
+        engineInitTimer = nil
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
 
@@ -836,6 +909,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     private func stopStreamingRecording() {
         viLog("stopStreamingRecording() entered")
+        engineInitTimer?.cancel()
+        engineInitTimer = nil
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
 
@@ -1239,6 +1314,7 @@ extension AppState: StreamingTranscriptionDelegate {
         switch insertResult {
         case .insertedViaAX:
             statusText = "已插入: \(finalText.prefix(20))..."
+
             self.playSound("Glass", volume: self.soundVolumeSuccess)
             overlayManager.showDone()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
@@ -1246,6 +1322,7 @@ extension AppState: StreamingTranscriptionDelegate {
             }
         case .pastedViaClipboard:
             statusText = "已粘贴: \(finalText.prefix(20))..."
+
             self.playSound("Glass", volume: self.soundVolumeSuccess)
             overlayManager.showDone()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {

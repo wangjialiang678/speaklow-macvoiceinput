@@ -78,11 +78,15 @@ class TextInserter {
             let afterLen = readFocusedElementValueLength()
             viLog("TextInserter: paste verify before=\(beforeLen) after=\(afterLen) (expected change of \(text.count))")
 
-            if beforeLen >= 0 && afterLen >= 0 && afterLen == beforeLen {
+            if beforeLen > 0 && afterLen >= 0 && afterLen == beforeLen {
                 // 文本框值没变化，Cmd+V 可能被 macOS 静默丢弃（权限中间状态）
                 viLog("TextInserter: paste verification FAILED — value unchanged, CGEvent likely dropped")
                 // 不恢复剪贴板，文本留在剪贴板供用户手动粘贴
                 return .copiedToClipboard
+            }
+            if beforeLen == 0 && afterLen == 0 {
+                // AXWebArea 等元素不支持读取值（始终返回空），无法验证，假定粘贴成功
+                viLog("TextInserter: paste verify inconclusive (both 0), assuming success")
             }
 
             viLog("TextInserter: paste verified OK")

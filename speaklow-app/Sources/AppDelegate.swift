@@ -47,13 +47,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             appState.startHotkeyMonitoring()
             appState.startAccessibilityPolling()
-            // AX permission is checked at insertion time with clipboard fallback.
-            // No blocking alert needed here — avoids spurious prompts after recompile.
+            // 启动时主动检测权限状态：若二进制变更（重编译），引导用户重新授权
+            appState.checkAccessibilityOnLaunch()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         asrBridgeManager.stop()
+    }
+
+    /// 用户点击 Dock/Launchpad 图标时，显示设置窗口
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showSettingsWindow()
+        }
+        return true
     }
 
     @objc func handleShowSetup() {
@@ -141,7 +149,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         appState.hasCompletedSetup = true
         setupWindow?.close()
         setupWindow = nil
-        NSApp.setActivationPolicy(.accessory)
+        // 保持 .regular 策略，Dock 始终显示图标
         appState.startHotkeyMonitoring()
         appState.startAccessibilityPolling()
     }

@@ -486,7 +486,9 @@ class RecordingOverlayManager {
         let panel = makeOverlayPanel(width: panelWidth, height: panelHeight)
         panel.ignoresMouseEvents = false  // 允许文字选择
 
-        let view = TextResultView(state: textResultState)
+        let view = TextResultView(state: textResultState, onDismiss: { [weak self] in
+            self?._dismissTextResult()
+        })
         let hosting = NSHostingView(rootView: view)
         hosting.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
         hosting.autoresizingMask = [.width, .height]
@@ -745,9 +747,23 @@ class TextResultState: ObservableObject {
 
 struct TextResultView: View {
     @ObservedObject var state: TextResultState
+    var onDismiss: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
+            // 关闭按钮（权限异常时全局事件监听可能失效，保底关闭方式）
+            HStack {
+                Spacer()
+                Button(action: { onDismiss?() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
+                .padding(.top, 6)
+            }
+
             ScrollView(.vertical, showsIndicators: false) {
                 Text(state.text)
                     .font(.system(size: 14))
@@ -755,7 +771,6 @@ struct TextResultView: View {
                     .lineSpacing(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
-                    .padding(.top, 10)
                     .textSelection(.enabled)
             }
 
