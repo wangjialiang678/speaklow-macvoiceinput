@@ -170,8 +170,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var recordingDuration: TimeInterval = 0
     private var recordingStartTime: Date?
     private var lastPartialText: String = ""
-    private var lastPartialChangeTime: Date = Date()
-    private var streamingStallTimer: Timer?
     private var safetyTimeoutWork: DispatchWorkItem?
     private var sentenceRefineCache: [String: String] = [:]
     private var pendingRefineCount = 0
@@ -306,6 +304,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private var lastAccessibilityPromptTime: Date = .distantPast
+    private var hasShownAccessibilityPrompt = false
 
     /// 打开辅助功能设置提示，60 秒内不重复弹出
     func openAccessibilitySettings() {
@@ -443,15 +442,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
         // Cancel any leftover safety timeout from a previous session
         safetyTimeoutWork?.cancel()
         safetyTimeoutWork = nil
-        // Always re-check live instead of relying on cached value
+        // Update AX status for UI, but don't block recording or prompt.
+        // AX only affects text insertion method; TextInserter has clipboard fallback.
+        // (see commit 9189221: AXIsProcessTrusted() flickers after recompile)
         hasAccessibility = AXIsProcessTrusted()
         viLog("AXIsProcessTrusted() = \(hasAccessibility)")
-        if !hasAccessibility {
-            viLog("AX permission not granted, prompting user")
-            overlayManager.showError(title: "辅助功能权限未授予", suggestion: "请在系统设置中允许 SpeakLow 控制电脑")
-            openAccessibilitySettings()
-            // 不阻断录音，继续录音（权限可能在录音期间被授予）
-        }
         guard ensureMicrophoneAccess() else {
             isRecording = false
             return
@@ -843,8 +838,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
         viLog("stopStreamingRecording() entered")
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
-        streamingStallTimer?.invalidate()
-        streamingStallTimer = nil
 
         let elapsed = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0.0
         if elapsed < 0.2 {
@@ -994,36 +987,15 @@ final class AppState: ObservableObject, @unchecked Sendable {
 extension AppState: StreamingTranscriptionDelegate {
     func streamingDidStart() {
         viLog("Streaming: bridge connected, ready to receive audio")
-
-        // Start stall detection: check every 3s if partial text has been stuck
         lastPartialText = ""
-        lastPartialChangeTime = Date()
-        streamingStallTimer?.invalidate()
-        streamingStallTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            guard let self, self.isStreaming else { return }
-            let stalledFor = Date().timeIntervalSince(self.lastPartialChangeTime)
-            if stalledFor > 10 && !self.lastPartialText.isEmpty {
-                viLog("Streaming: partial text stuck for \(Int(stalledFor))s, force-finishing")
-                self.streamingStallTimer?.invalidate()
-                self.streamingStallTimer = nil
-                // Force-finish: treat current committed text as final
-                self.streamingDidFinish()
-            }
-        }
     }
-
     func streamingDidReceivePartial(text: String) {
         // 拦截 corpus leak：DashScope 在静默时会把 session config 中的热词提示文本回传
         if isCorpusLeak(text) { return }
-        viLog("Streaming partial: \(text.prefix(40))")
+        viLog("Streaming partial: \(text.prefix(80))")
         let display = committedSentences.joined() + text
         overlayManager.updatePreviewText(display)
-
-        // Track stall: if partial text hasn't changed for 10s, the stream is stuck
-        if text != lastPartialText {
-            lastPartialText = text
-            lastPartialChangeTime = Date()
-        }
+        lastPartialText = text
     }
 
     func streamingDidReceiveSentence(text: String) {
@@ -1052,11 +1024,10 @@ extension AppState: StreamingTranscriptionDelegate {
         viLog("Streaming: finished")
 
         isStreaming = false
-        streamingStallTimer?.invalidate()
-        streamingStallTimer = nil
         streamingService?.disconnect()
         streamingService = nil
         audioRecorder.onStreamingAudioChunk = nil
+
 
         transcribingIndicatorTask?.cancel()
         transcribingIndicatorTask = nil
@@ -1297,8 +1268,6 @@ extension AppState: StreamingTranscriptionDelegate {
         viLog("Streaming FAILED: \(error.localizedDescription), falling back to batch mode")
 
         isStreaming = false
-        streamingStallTimer?.invalidate()
-        streamingStallTimer = nil
         streamingService?.disconnect()
         streamingService = nil
         audioRecorder.onStreamingAudioChunk = nil

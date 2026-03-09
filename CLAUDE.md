@@ -118,6 +118,5 @@ Key env vars:
 
 - Logs: `~/Library/Logs/SpeakLow.log` (uses `os_log`, viewable in Console.app or `log stream --predicate 'subsystem == "com.speaklow.app"'`)
 - Recorded audio: `~/Library/Caches/SpeakLow/recordings/` (last 20 files, named `recording-yyyyMMdd-HHmmss.wav`)
-- Streaming stall: AppState has a 3-second repeating timer that auto-finishes if partial text is unchanged for 10 seconds
-- Safety timeout: 5-second fallback timer fires after `stopStreamingRecording` to prevent indefinite hang
+- Safety timeout: 5-second fallback timer fires after `stopStreamingRecording` to prevent indefinite hang (user controls recording lifecycle; no auto-finish during recording)
 - Bridge health: `curl http://localhost:18089/health` — if unhealthy, ASRBridgeManager auto-restarts the Go process
