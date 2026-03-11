@@ -60,6 +60,7 @@ func main() {
 	mux.HandleFunc("/v1/transcribe-sync", transcribeSyncHandler(apiKey))
 	mux.HandleFunc("/v1/stream", streamHandler(apiKey))
 	mux.HandleFunc("/v1/refine", refineHandler(apiKey))
+	mux.HandleFunc("/v1/reload-hotwords", reloadHotwordsHandler)
 
 	handler := corsMiddleware(loggingMiddleware(mux))
 
@@ -142,6 +143,22 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return hj.Hijack()
 	}
 	return nil, nil, fmt.Errorf("underlying ResponseWriter does not support Hijack")
+}
+
+func reloadHotwordsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	count, err := reloadHotwords()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "ok",
+		"words":  count,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

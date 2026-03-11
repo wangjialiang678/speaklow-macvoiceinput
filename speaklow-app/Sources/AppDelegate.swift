@@ -42,6 +42,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             viLog("Batch mode: skipping ASR Bridge startup")
         }
 
+        // 监听跨进程热词重载通知（CLI 触发）
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleReloadHotwords),
+            name: .init("com.speaklow.reloadHotwords"),
+            object: nil
+        )
+
         if !appState.hasCompletedSetup {
             showSetupWindow()
         } else {
@@ -72,6 +80,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleShowSettings() {
         showSettingsWindow()
+    }
+
+    @objc private func handleReloadHotwords() {
+        DashScopeClient.shared.reloadCorpusText()
+        viLog("热词表已通过外部通知重载")
     }
 
     private func showSettingsWindow() {

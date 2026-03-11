@@ -27,7 +27,7 @@ final class DashScopeClient {
     static let shared = DashScopeClient()
 
     private let apiKey: String?
-    private let corpusText: String
+    private var corpusText: String
     private let preamble: String
     private let promptText: String
     private var styleRules: [String: String] = [:]
@@ -36,7 +36,7 @@ final class DashScopeClient {
         // 1. API Key
         apiKey = EnvLoader.loadDashScopeAPIKey()
 
-        // 2. 热词加载 - 从 bundle Resources/hotwords.txt
+        // 2. 热词加载 - 优先用户配置文件，fallback 到 bundle
         corpusText = DashScopeClient.loadCorpusText()
 
         // 3. Refine prompt 文件加载
@@ -55,9 +55,47 @@ final class DashScopeClient {
 
     // MARK: - Private Helpers
 
+    /// 重载热词表（从用户配置文件重新读取）
+    /// 文件不可读时保留旧值，不会清空 corpus
+    func reloadCorpusText() {
+        let newCorpus = DashScopeClient.loadCorpusText()
+        if newCorpus.isEmpty && !corpusText.isEmpty {
+            // 检查是否是文件不可读（而非内容确实为空）
+            let userPath = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".config/speaklow/hotwords.txt")
+            let bundleURL = Bundle.main.url(forResource: "hotwords", withExtension: "txt")
+            let fileExists = FileManager.default.fileExists(atPath: userPath.path) || bundleURL != nil
+            if fileExists {
+                // 文件存在但解析为空（全是注释），允许清空
+                corpusText = newCorpus
+                viLog("DashScopeClient: corpus cleared (file has no hotwords)")
+            } else {
+                viLog("DashScopeClient: reload skipped (file not readable, keeping old corpus)")
+                return
+            }
+        } else {
+            let old = corpusText.count
+            corpusText = newCorpus
+            viLog("DashScopeClient: corpus reloaded, \(old)→\(corpusText.count) chars")
+        }
+    }
+
     private static func loadCorpusText() -> String {
-        guard let url = Bundle.main.url(forResource: "hotwords", withExtension: "txt"),
-              let content = try? String(contentsOf: url, encoding: .utf8) else {
+        // 优先读用户配置文件 ~/.config/speaklow/hotwords.txt
+        let userPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/speaklow/hotwords.txt")
+        let bundleURL = Bundle.main.url(forResource: "hotwords", withExtension: "txt")
+
+        let url: URL
+        if FileManager.default.fileExists(atPath: userPath.path) {
+            url = userPath
+        } else if let b = bundleURL {
+            url = b
+        } else {
+            return ""
+        }
+
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
             return ""
         }
 

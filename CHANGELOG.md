@@ -10,6 +10,10 @@ audience: human
 ## [Unreleased]
 
 ### Added
+- 热词表运行时重载：CLI 命令 `speaklow-reload-hotwords` 同时支持 streaming（Go bridge `/v1/reload-hotwords`）和 batch（DistributedNotification → Swift app）两种模式
+- 热词文件优先级链：`HOTWORDS_FILE` 环境变量 > `~/.config/speaklow/hotwords.txt` > bundle `Resources/hotwords.txt`
+- 防御性重载：文件不可读时保留旧热词表，不中断功能；文件可读但无热词时正确清空
+- Go bridge 热词重载单元测试（9 个用例：格式解析、音近提示、注释跳过、空文件、文件删除保留旧值、环境变量覆盖等）
 - 启动时辅助功能权限运行时验证：用 `CGEvent.tapCreate()` 替代不可靠的 `AXIsProcessTrusted()`，准确检测权限 stale 状态
 - 文字结果面板关闭按钮（权限异常时全局事件监听失效的保底关闭方式）
 - Batch 模式三段状态提示：🎙 正在录音 → 🔍 正在识别 → ✨ 正在优化

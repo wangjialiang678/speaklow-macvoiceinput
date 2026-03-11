@@ -1,0 +1,55 @@
+#!/bin/bash
+# speaklow-reload-hotwords: 重载热词表（streaming + batch 双模式）
+#
+# 用法:
+#   speaklow-reload-hotwords          # 两种模式同时 reload
+#   speaklow-reload-hotwords bridge   # 仅 streaming 模式（Go bridge）
+#   speaklow-reload-hotwords app      # 仅 batch 模式（Swift app）
+#
+# 安装: ln -s $(pwd)/scripts/speaklow-reload-hotwords /usr/local/bin/
+
+set -euo pipefail
+
+BRIDGE_URL="${ASR_BRIDGE_URL:-http://localhost:18089}"
+MODE="${1:-all}"
+
+reload_bridge() {
+    local response
+    if response=$(curl -sf -X POST "$BRIDGE_URL/v1/reload-hotwords" 2>/dev/null); then
+        local words
+        words=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin)['words'])" 2>/dev/null || echo "?")
+        echo "OK  Bridge 热词已重载 ($words 个)"
+        return 0
+    else
+        echo "--  Bridge 未运行，跳过"
+        return 1
+    fi
+}
+
+reload_app() {
+    # 通过 macOS DistributedNotificationCenter 通知 Swift app
+    if swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("com.speaklow.reloadHotwords"), object: nil, userInfo: nil, deliverImmediately: true)' 2>/dev/null; then
+        echo "OK  App 热词重载通知已发送"
+        return 0
+    else
+        echo "!!  App 通知发送失败"
+        return 1
+    fi
+}
+
+case "$MODE" in
+    bridge)
+        reload_bridge
+        ;;
+    app)
+        reload_app
+        ;;
+    all)
+        reload_bridge || true
+        reload_app
+        ;;
+    *)
+        echo "用法: speaklow-reload-hotwords [bridge|app|all]"
+        exit 1
+        ;;
+esac
