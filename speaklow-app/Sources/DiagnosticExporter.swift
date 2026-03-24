@@ -108,7 +108,7 @@ class DiagnosticExporter {
 
     private static func collectConfig() -> String {
         let defaults = UserDefaults.standard
-        let asrMode = defaults.string(forKey: "asr_mode") ?? "streaming"
+        let asrMode = defaults.string(forKey: "asr_mode") ?? "batch"
         let hotkey = defaults.string(forKey: "selected_hotkey") ?? "rightOption"
         let refineEnabled = defaults.bool(forKey: "llm_refine_enabled")
         let refineStyle = defaults.string(forKey: "refine_style") ?? "default"

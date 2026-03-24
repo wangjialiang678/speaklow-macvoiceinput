@@ -116,6 +116,9 @@ docs/                  ← 文档
 - [开发教程](docs/handbook/tutorial.md)
 - [热词表说明](docs/handbook/hotwords-ai-dev.md)
 
+### ASR 复用指南
+- [DashScope ASR 接入指南](docs/reusable-asr-guide/) — 面向其他项目团队，含 API 规范、可复用模块、踩坑记录
+
 ### 调研报告
 - [ASR 模型对比](docs/research/2026-03-05-asr-models-comparison.md)
 - [流式文本插入方案验证](docs/research/2026-03-01-streaming-text-insertion.md)

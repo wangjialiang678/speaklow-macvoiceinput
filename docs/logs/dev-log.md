@@ -52,3 +52,16 @@ tags: [dev-log]
 - 净改动: 删除 ~425 行 suite 依赖代码，新增 ~380 行独立实现
 - asr-bridge 零外部依赖（仅 gorilla/websocket + godotenv）
 - 待手动测试: `make run` → 按住热键说话 → 确认文字正确插入
+### 2026-03-13 20:35 — 默认切换到 batch + 收敛单实例启动
+- 背景：本机同时运行 `/Applications/SpeakLow.app` 与 `speaklow-app/build/SpeakLow.app`，导致热键、权限检查、日志写入都出现双触发；同时流式 bridge 因上游 `Access denied` 持续崩溃。
+- 改动：
+- `AppState.swift` 将 `asr_mode` 默认值从 `streaming` 改为 `batch`
+- `DiagnosticExporter.swift` 同步使用 `batch` 作为未设置时的默认导出值
+- `speaklow-app/Makefile` 在 `all` 后执行 ad-hoc codesign，减少开发版 bundle 身份漂移；`make run` 启动前先清理旧的 `SpeakLow` 与 `asr-bridge` 进程，避免双实例
+- 文档：更新 `AGENTS.md` 中的默认模式和运行说明
+
+### 2026-03-13 21:05 — 录音启动失败排查补丁
+- 现象：权限已授权，但 batch 模式无法进入有效录音，日志显示 `AVAudioEngine.start()` 最终报 `1937010544 ('stop')`，用户侧只看到 `0ms` 丢弃。
+- 改动：
+- `AudioRecorder.swift` 在用户选择“默认麦克风”时，先解析系统默认输入设备的真实 UID，再显式绑定到 AUHAL，尽量绕开 `CADefaultDeviceAggregate-*` 路径
+- `AppState.swift` 为 batch/streaming 两条录音启动失败路径补充 `viLog` 和错误 overlay，避免静默失败

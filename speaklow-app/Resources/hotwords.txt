@@ -1,11 +1,10 @@
 # SpeakLow 热词表
-# 格式: 热词<TAB>权重<TAB>src_lang<TAB>target_lang<TAB>音近提示(可选)
+# 格式: 热词<TAB>权重<TAB>src_lang<TAB>target_lang
 Cursor	5	en	zh
-Claude Code	5	en	zh	克劳德扣的
-Copilot	5	en	zh	扣pai了
-git 5 en zh
+Claude Code	5	en	zh
+git	5	en	zh
 TRAE	5	en	zh
-OpenCode	5	en	zh
+OpenClaw	5	en	zh
 CLI	4	en	zh
 CLAUDE.md	5	en	zh
 Skills	4	en	zh
@@ -13,72 +12,37 @@ Hooks	4	en	zh
 sub-agent	5	en	zh
 MCP	5	en	zh
 worktree	4	en	zh
-context window	4	en	zh
 token	3	en	zh
-system prompt	4	en	zh
-Claude	5	en	zh	克劳德
-Opus	5	en	zh	欧帕斯
-Sonnet	5	en	zh	索纳特
-GPT	5	en	zh
-Codex	4	en	zh	扣德克斯
-Gemini	5	en	zh	杰米尼
-Llama	5	en	zh	拉马
-Grok	5	en	zh	格罗克
-DeepSeek	5	en	zh	迪普西克
-通义千问	5	zh
-Qwen	5	en	zh	千问/千万
-Kimi	5	en	zh
-智谱	5	zh
-GLM	5	en	zh
-豆包	5	zh
+Opus	5	en	zh
+Sonnet	5	en	zh
+Codex	4	en	zh
+Gemini	5	en	zh
 MiniMax	5	en	zh
-Anthropic	5	en	zh	安斯罗皮克
-OpenAI	5	en	zh
 Hugging Face	5	en	zh
 百炼	5	zh
-硅基流动	5	zh
-魔搭	5	zh
-Groq	5	en	zh	格罗克
+魔搭	4	zh
 vibe coding	5	en	zh
 vibe code	5	en	zh
-prompt	3	en	zh
-prompt engineering	4	en	zh
 PRD	4	en	zh
 MVP	4	en	zh
 code review	4	en	zh
-hallucination	4	en	zh
-fine-tuning	4	en	zh
-chain of thought	4	en	zh
-Agent	4	en	zh
-agentic	4	en	zh
-LangChain	5	en	zh	朗链
-Dify	5	en	zh	迪飞
+Dify	5	en	zh
 扣子	5	zh
 Coze	5	en	zh
-Manus	5	en	zh	马努斯
+Manus	5	en	zh
 n8n	5	en	zh
-function calling	4	en	zh
-tool use	4	en	zh
 A2A	5	en	zh
 RAG	5	en	zh
-embedding	4	en	zh
 LLM	5	en	zh
 多模态	4	zh
-LoRA	5	en	zh	罗拉
-transformer	4	en	zh
+LoRA	5	en	zh
 React	4	en	zh
-Vue	4	en	zh
-Tailwind	5	en	zh
-FastAPI	5	en	zh
 Supabase	5	en	zh
-Firebase	5	en	zh
 Redis	4	en	zh
-Vercel	5	en	zh	佛赛尔
+Vercel	5	en	zh
 Cloudflare	5	en	zh
 VS Code	5	en	zh
-Git	3	en	zh
 GitHub	4	en	zh
-pull request	4	en	zh
 npm	4	en	zh
 Node.js	4	en	zh
 Python	3	en	zh
@@ -88,18 +52,26 @@ Swift	3	en	zh
 Vite	5	en	zh
 Docker	4	en	zh
 Playwright	5	en	zh
-API	3	en	zh
-SDK	4	en	zh
 JSON	3	en	zh
 WebSocket	5	en	zh
-REST	4	en	zh
 Markdown	4	en	zh
 md	3	en	zh
 ASR	5	en	zh
 TTS	5	en	zh
-Whisper	5	en	zh
 FunASR	5	en	zh
-Qwen3	5	en	zh	千问三/千万三
-qwen3-asr	5	en	zh	千万三ASR
-paraformer	5	en	zh	帕拉佛墨
-DashScope	5	en	zh	达世扣普
+Qwen3	5	en	zh
+qwen3-asr	5	en	zh
+并行子代理	5	zh
+子代理	5	zh
+超脑	5	zh
+佳梁	5	zh
+艾芙	5	zh
+德宏	5	zh
+Aiken	5	en	zh
+良渚	5	zh
+一人公司	5	zh
+AI native	5	en	zh
+S创	5	zh
+工研院	5	zh
+Get 笔记	5	en	zh
+黑客松	5	zh

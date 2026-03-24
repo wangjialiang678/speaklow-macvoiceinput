@@ -50,7 +50,7 @@ final class DashScopeClient {
             }
         }
 
-        viLog("DashScopeClient init: apiKey=\(apiKey != nil), corpus=\(corpusText.count) chars, preamble=\(preamble.count) chars")
+        viLog("DashScopeClient init: apiKey=\(apiKey != nil), keyPrefix=\(apiKey?.prefix(10) ?? "nil"), corpus=\(corpusText.count) chars, preamble=\(preamble.count) chars")
     }
 
     // MARK: - Private Helpers

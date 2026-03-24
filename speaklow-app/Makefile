@@ -41,12 +41,16 @@ $(MACOS_DIR)/$(APP_NAME): $(SOURCES) Info.plist $(ASR_BRIDGE)
 	@if [ -f Resources/refine_preamble.txt ]; then cp Resources/refine_preamble.txt "$(RESOURCES)/"; fi
 	@if [ -f Resources/refine_prompt.txt ]; then cp Resources/refine_prompt.txt "$(RESOURCES)/"; fi
 	@if [ -d Resources/refine_styles ]; then mkdir -p "$(RESOURCES)/refine_styles" && cp Resources/refine_styles/*.txt "$(RESOURCES)/refine_styles/"; fi
+	@codesign --force --deep --sign - "$(APP_BUNDLE)"
+	@echo "Ad-hoc signed $(APP_BUNDLE)"
 	@echo "Built $(APP_BUNDLE)"
 
 clean:
 	rm -rf $(BUILD_DIR)
 
 run: all
+	@pkill -f '/SpeakLow.app/Contents/MacOS/SpeakLow' >/dev/null 2>&1 || true
+	@pkill -f '/SpeakLow.app/Contents/MacOS/asr-bridge' >/dev/null 2>&1 || true
 	open "$(APP_BUNDLE)"
 
 install: all

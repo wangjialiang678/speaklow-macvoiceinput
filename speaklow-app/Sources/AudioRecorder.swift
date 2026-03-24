@@ -104,6 +104,26 @@ struct AudioDevice: Identifiable {
         // Look up through the enumerated devices to avoid CFString pointer issues
         return availableInputDevices().first(where: { $0.uid == uid })?.id
     }
+
+    static func defaultInputDeviceUID() -> String? {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(0)
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0, nil,
+            &dataSize,
+            &deviceID
+        ) == noErr else {
+            return nil
+        }
+        return availableInputDevices().first(where: { $0.id == deviceID })?.uid
+    }
 }
 
 enum AudioRecorderError: LocalizedError {
@@ -169,6 +189,15 @@ class AudioRecorder: NSObject, ObservableObject {
         firstBufferLogged = false
         bufferCount = 0
         readyFired = false
+        let resolvedDeviceUID: String? = {
+            guard let uid = deviceUID, !uid.isEmpty else {
+                return AudioDevice.defaultInputDeviceUID()
+            }
+            if uid == "default" {
+                return AudioDevice.defaultInputDeviceUID()
+            }
+            return uid
+        }()
 
         os_log(.info, log: recordingLog, "startRecording() entered")
 
@@ -178,7 +207,7 @@ class AudioRecorder: NSObject, ObservableObject {
         os_log(.info, log: recordingLog, "AVCaptureDevice check: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
 
         // Reuse existing engine if same device, otherwise build new one
-        if let _ = audioEngine, currentDeviceUID == deviceUID {
+        if let _ = audioEngine, currentDeviceUID == resolvedDeviceUID {
             os_log(.info, log: recordingLog, "reusing existing engine: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
         } else {
             // Tear down old engine if device changed
@@ -192,7 +221,7 @@ class AudioRecorder: NSObject, ObservableObject {
             os_log(.info, log: recordingLog, "AVAudioEngine created: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
 
             // Set specific input device if requested
-            if let uid = deviceUID, !uid.isEmpty, uid != "default",
+            if let uid = resolvedDeviceUID, !uid.isEmpty,
                let deviceID = AudioDevice.deviceID(forUID: uid) {
                 os_log(.info, log: recordingLog, "device lookup resolved to %d: %.3fms", deviceID, (CFAbsoluteTimeGetCurrent() - t0) * 1000)
                 let inputUnit = engine.inputNode.audioUnit!
@@ -314,7 +343,7 @@ class AudioRecorder: NSObject, ObservableObject {
             os_log(.info, log: recordingLog, "engine prepared: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
 
             self.audioEngine = engine
-            self.currentDeviceUID = deviceUID
+            self.currentDeviceUID = resolvedDeviceUID
         }
 
         // Start engine if not already running

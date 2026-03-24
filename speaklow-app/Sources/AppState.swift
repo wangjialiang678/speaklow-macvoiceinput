@@ -182,8 +182,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let initialAccessibility = AXIsProcessTrusted()
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
-        // ASR mode defaults: streaming
-        let asrMode = ASRMode(rawValue: UserDefaults.standard.string(forKey: "asr_mode") ?? "streaming") ?? .streaming
+        // ASR mode defaults: batch
+        let asrMode = ASRMode(rawValue: UserDefaults.standard.string(forKey: "asr_mode") ?? "batch") ?? .batch
 
         // LLM refinement defaults: enabled
         let llmEnabled = UserDefaults.standard.object(forKey: "llm_refine_enabled") as? Bool ?? true
@@ -644,9 +644,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 DispatchQueue.main.async {
                     initTimer.cancel()
                     self.isRecording = false
-                    self.errorMessage = self.formattedRecordingStartError(error)
+                    let message = self.formattedRecordingStartError(error)
+                    viLog("Batch recording start failed: \(message)")
+                    self.errorMessage = message
                     self.statusText = "Error"
-                    self.overlayManager.dismiss()
+                    self.overlayManager.showError(
+                        title: "麦克风启动失败",
+                        suggestion: "请检查麦克风设备，必要时重启音频服务或重启 Mac"
+                    )
                 }
             }
         }
@@ -789,9 +794,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 DispatchQueue.main.async {
                     initTimer.cancel()
                     self.isRecording = false
-                    self.errorMessage = self.formattedRecordingStartError(error)
+                    let message = self.formattedRecordingStartError(error)
+                    viLog("Streaming recording start failed: \(message)")
+                    self.errorMessage = message
                     self.statusText = "Error"
-                    self.overlayManager.dismiss()
+                    self.overlayManager.showError(
+                        title: "麦克风启动失败",
+                        suggestion: "请检查麦克风设备，必要时重启音频服务或重启 Mac"
+                    )
                 }
             }
         }
