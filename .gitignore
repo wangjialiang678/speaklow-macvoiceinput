@@ -16,5 +16,10 @@ CLAUDE.md
 # Go binary
 asr-bridge/asr-bridge
 
+# Prototypes & test assets
+design-preview/
+speaklow-app/prototypes/
+test-audio/
+
 # Misc
 macsleep
