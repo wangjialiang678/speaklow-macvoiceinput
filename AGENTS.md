@@ -1,8 +1,100 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to AI coding assistants (Claude Code, Codex, Cursor, etc.) when working with this repository.
 
-## Build & Run
+## First-Time Installation Guide
+
+**If the user is installing SpeakLow for the first time, follow these steps in order.** This is a macOS voice input tool — hold a hotkey to speak, release to insert text at the cursor.
+
+### Step 1: Check Prerequisites
+
+```bash
+# Check macOS version (need 13.0+)
+sw_vers
+
+# Check Xcode Command Line Tools
+xcode-select -p
+# If not installed: xcode-select --install
+
+# Check Go version (need 1.22+)
+go version
+# If not installed: brew install go
+# If Homebrew not installed: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### Step 2: Get a DashScope API Key
+
+SpeakLow uses Alibaba Cloud DashScope for speech recognition. The user needs their own API key.
+
+1. Go to https://dashscope.console.aliyun.com/ and sign up (Chinese phone number required for Alibaba Cloud)
+2. After login, go to **API-KEY 管理** (API Key Management) in the left sidebar
+3. Click **创建新的 API-KEY** (Create New API Key)
+4. Copy the key (starts with `sk-`)
+
+Then save it:
+```bash
+mkdir -p ~/.config/speaklow
+echo 'DASHSCOPE_API_KEY=sk-your-key-here' > ~/.config/speaklow/.env
+```
+
+**Important:** DashScope offers a free tier with generous quotas for qwen3-asr-flash and qwen-flash models. No payment setup needed for normal personal use.
+
+### Step 3: Build and Install
+
+```bash
+cd speaklow-app && make run
+```
+
+This single command builds everything (Go bridge + Swift app) and launches the app. First build takes ~30 seconds.
+
+### Step 4: Grant System Permissions
+
+On first launch, macOS will ask for two permissions:
+
+1. **Microphone** — a system dialog pops up, click "OK"
+2. **Accessibility** — needed for auto-inserting text at cursor position:
+   - Open **System Settings → Privacy & Security → Accessibility**
+   - Click the lock icon to unlock
+   - Click "+" and add **SpeakLow.app** (in `speaklow-app/build/`)
+   - Make sure the toggle is ON
+
+If accessibility is not granted, the app still works but you'll need to manually paste (Cmd+V) after each recognition.
+
+### Step 5: Verify It Works
+
+1. Look for the SpeakLow icon in the **menu bar** (top-right of screen)
+2. **Hold the Right Option key** (⌥, right side of keyboard) and speak
+3. **Release** — text should appear at the cursor position
+4. If text doesn't insert automatically, check accessibility permission (Step 4)
+
+### Step 6: Customize Hotwords (Optional)
+
+The app comes with ~70 AI development terms pre-loaded. To add your own terms:
+
+- Open the app's **Settings** (click menu bar icon) → scroll to **Hotwords** section → click "编辑热词..."
+- Or edit the file directly: `~/.config/speaklow/hotwords.txt`
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "SpeakLow is damaged" on first open | macOS Gatekeeper | Run `xattr -cr speaklow-app/build/SpeakLow.app` |
+| No menu bar icon | App didn't launch | Check `make run` output for build errors |
+| Records but text doesn't insert | Accessibility permission missing | See Step 4 |
+| "语音服务未启动" error | Bridge not running | Restart the app; check `~/.config/speaklow/.env` has valid API key |
+| Records but empty result | Wrong microphone selected | Click menu bar icon → Settings → change microphone |
+| Build fails at `go build` | Go not installed or < 1.22 | `brew install go` or `brew upgrade go` |
+| Build fails at `swiftc` | Xcode CLI tools missing | `xcode-select --install` |
+
+### Logs for Debugging
+
+- App log: `~/Library/Logs/SpeakLow.log`
+- Recorded audio: `~/Library/Caches/SpeakLow/recordings/` (last 20 files)
+- Bridge health: `curl http://localhost:18089/health`
+
+---
+
+## Build & Run (Developer Reference)
 
 Prerequisites: macOS 13.0+, Xcode Command Line Tools, Go 1.22+.
 
@@ -220,7 +312,7 @@ Key env vars:
 
 ### Resources (`speaklow-app/Resources/`)
 
-- `hotwords.txt` — 98 AI dev terms (tab-separated: word, weight, src_lang, target_lang, phonetic hint)
+- `hotwords.txt` — ~70 AI dev terms (tab-separated: word, weight, src_lang, target_lang)
 - `refine_preamble.txt` — LLM safety preamble (immutable, bundled)
 - `refine_prompt.txt` — LLM refinement rules (user-overridable via `~/.config/speaklow/`)
 - `AppIcon.icns` — App icon
