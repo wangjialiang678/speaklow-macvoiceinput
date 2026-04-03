@@ -59,11 +59,11 @@ Bridge is auto-started in streaming mode and auto-stopped when switching to batc
 Compiled with `swiftc` directly (no Xcode project/SPM). All 17 `.swift` files are passed to a single `swiftc` invocation via the Makefile.
 
 Key files:
-- **AppState.swift** — Central orchestrator. Recording lifecycle, dual-mode ASR (batch/streaming), error handling, self-healing. Largest file.
+- **AppState.swift** — Central orchestrator. Recording lifecycle, dual-mode ASR (batch/streaming), error handling, mic self-healing (retry + built-in fallback). Largest file.
 - **DashScopeClient.swift** — Swift direct DashScope API client: batch ASR (qwen3-asr-flash), LLM refine (qwen-flash), hotword corpus loading. Singleton.
 - **TranscriptionStrategy.swift** — Strategy protocol + ASRMode enum + BatchStrategy + StreamingStrategy.
 - **ASRBridgeManager.swift** — Go bridge process lifecycle (launch, health check, crash auto-restart, periodic health monitor).
-- **AudioRecorder.swift** — AVAudioEngine microphone capture with silence detection. Saves recordings to `~/Library/Caches/SpeakLow/recordings/` (retains last 20).
+- **AudioRecorder.swift** — AVAudioEngine microphone capture with silence detection. Saves recordings to `~/Library/Caches/SpeakLow/recordings/` (retains last 20). CoreAudio device-change listener auto-invalidates engine on default input device change. Provides `AudioDevice.builtInMicrophoneUID()` and `AudioDevice.isBluetoothDevice(uid:)` for fallback logic.
 - **HotkeyManager.swift** — Global hotkey monitoring (Right Option / Fn / F5).
 - **StreamingTranscriptionService.swift** — WebSocket client for real-time ASR via `/v1/stream` (streaming mode only).
 - **TranscriptionService.swift** — Bridge HTTP transcription via `/v1/transcribe-sync` (streaming mode sync re-transcription).
@@ -115,6 +115,7 @@ Key env vars:
 ## Known Pitfalls
 
 - **`make run` / `open SpeakLow.app` does NOT restart a running app** — macOS `open` brings the existing process to front. After rebuilding, you MUST `pkill -f SpeakLow` first, then `open build/SpeakLow.app` (or `make run`). Otherwise the old binary keeps running with stale code. This is a common source of "my fix doesn't work" confusion.
+- **Microphone self-healing**: When `startRecording()` fails (e.g., Bluetooth disconnected, sleep/wake stale engine), the app auto-retries: invalidate engine → retry same device → fallback to built-in mic → show device-specific error. A CoreAudio listener on `kAudioHardwarePropertyDefaultInputDevice` proactively invalidates the engine when the default input device changes, so the next recording attempt uses a fresh engine.
 
 ## Debugging
 

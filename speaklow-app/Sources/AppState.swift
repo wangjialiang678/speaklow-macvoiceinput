@@ -427,6 +427,42 @@ final class AppState: ObservableObject, @unchecked Sendable {
         )
     }
 
+    private func resolvedRecordingDeviceUID(_ deviceUID: String?) -> String? {
+        guard let deviceUID, !deviceUID.isEmpty, deviceUID != "default" else {
+            return AudioDevice.defaultInputDeviceUID()
+        }
+        return deviceUID
+    }
+
+    private func subscribeAudioLevelUpdates() {
+        audioLevelCancellable?.cancel()
+        audioLevelCancellable = audioRecorder.$audioLevel
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in
+                self?.overlayManager.updateAudioLevel(level)
+            }
+    }
+
+    private func showMicError(deviceUID: String?, error: Error) {
+        let resolvedDeviceUID = resolvedRecordingDeviceUID(deviceUID)
+        let deviceName = resolvedDeviceUID.flatMap { AudioDevice.deviceName(forUID: $0) } ?? "未知设备"
+        let message = "麦克风启动失败（\(deviceName)）"
+        let isBluetooth = resolvedDeviceUID.map { AudioDevice.isBluetoothDevice(uid: $0) } ?? false
+        let suggestion = isBluetooth
+            ? "蓝牙设备连接异常，请断开重连或切换到内置麦克风"
+            : "请检查麦克风设备，必要时在系统设置中切换输入设备"
+
+        viLog("Recording start failed: \(message) - \(error)")
+        audioLevelCancellable?.cancel()
+        audioLevelCancellable = nil
+        engineInitTimer?.cancel()
+        engineInitTimer = nil
+        isRecording = false
+        errorMessage = message
+        statusText = "Error"
+        overlayManager.showError(title: message, suggestion: suggestion)
+    }
+
     // MARK: - Hotkey Monitoring
 
     func startHotkeyMonitoring() {
@@ -594,7 +630,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         initTimer.resume()
         engineInitTimer = initTimer
 
-        let deviceUID = selectedMicrophoneID
+        let deviceUID = resolvedRecordingDeviceUID(selectedMicrophoneID)
         audioRecorder.onRecordingReady = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -634,24 +670,42 @@ final class AppState: ObservableObject, @unchecked Sendable {
             do {
                 try self.audioRecorder.startRecording(deviceUID: deviceUID)
                 DispatchQueue.main.async {
-                    self.audioLevelCancellable = self.audioRecorder.$audioLevel
-                        .receive(on: DispatchQueue.main)
-                        .sink { [weak self] level in
-                            self?.overlayManager.updateAudioLevel(level)
-                        }
+                    self.subscribeAudioLevelUpdates()
                 }
             } catch {
-                DispatchQueue.main.async {
-                    initTimer.cancel()
-                    self.isRecording = false
-                    let message = self.formattedRecordingStartError(error)
-                    viLog("Batch recording start failed: \(message)")
-                    self.errorMessage = message
-                    self.statusText = "Error"
-                    self.overlayManager.showError(
-                        title: "麦克风启动失败",
-                        suggestion: "请检查麦克风设备，必要时重启音频服务或重启 Mac"
-                    )
+                viLog("Batch recording start failed on first attempt: \(error.localizedDescription)")
+                self.audioRecorder.invalidateEngine()
+                do {
+                    try self.audioRecorder.startRecording(deviceUID: deviceUID)
+                    DispatchQueue.main.async {
+                        self.subscribeAudioLevelUpdates()
+                    }
+                } catch {
+                    viLog("Batch recording start failed after engine reset: \(error.localizedDescription)")
+                    let builtInUID = AudioDevice.builtInMicrophoneUID()
+                    if let builtInUID, deviceUID != builtInUID {
+                        self.audioRecorder.invalidateEngine()
+                        do {
+                            try self.audioRecorder.startRecording(deviceUID: builtInUID)
+                            DispatchQueue.main.async {
+                                self.subscribeAudioLevelUpdates()
+                                self.overlayManager.showError(
+                                    title: "已切换到内置麦克风",
+                                    suggestion: "原设备连接异常，已自动切换"
+                                )
+                            }
+                        } catch {
+                            DispatchQueue.main.async {
+                                initTimer.cancel()
+                                self.showMicError(deviceUID: deviceUID, error: error)
+                            }
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            initTimer.cancel()
+                            self.showMicError(deviceUID: deviceUID, error: error)
+                        }
+                    }
                 }
             }
         }
@@ -741,7 +795,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         // Preview panel auto-shows on first partial text
         viLog("Streaming mode: initialized")
 
-        let deviceUID = selectedMicrophoneID
+        let deviceUID = resolvedRecordingDeviceUID(selectedMicrophoneID)
         audioRecorder.onRecordingReady = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -784,46 +838,47 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 try self.audioRecorder.startRecording(deviceUID: deviceUID)
                 os_log(.info, log: recordingLog, "audioRecorder.startRecording() done: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
                 DispatchQueue.main.async {
-                    self.audioLevelCancellable = self.audioRecorder.$audioLevel
-                        .receive(on: DispatchQueue.main)
-                        .sink { [weak self] level in
-                            self?.overlayManager.updateAudioLevel(level)
-                        }
+                    self.subscribeAudioLevelUpdates()
                 }
             } catch {
-                DispatchQueue.main.async {
-                    initTimer.cancel()
-                    self.isRecording = false
-                    let message = self.formattedRecordingStartError(error)
-                    viLog("Streaming recording start failed: \(message)")
-                    self.errorMessage = message
-                    self.statusText = "Error"
-                    self.overlayManager.showError(
-                        title: "麦克风启动失败",
-                        suggestion: "请检查麦克风设备，必要时重启音频服务或重启 Mac"
-                    )
+                viLog("Streaming recording start failed on first attempt: \(error.localizedDescription)")
+                self.audioRecorder.invalidateEngine()
+                do {
+                    try self.audioRecorder.startRecording(deviceUID: deviceUID)
+                    DispatchQueue.main.async {
+                        self.subscribeAudioLevelUpdates()
+                    }
+                } catch {
+                    viLog("Streaming recording start failed after engine reset: \(error.localizedDescription)")
+                    let builtInUID = AudioDevice.builtInMicrophoneUID()
+                    if let builtInUID, deviceUID != builtInUID {
+                        self.audioRecorder.invalidateEngine()
+                        do {
+                            try self.audioRecorder.startRecording(deviceUID: builtInUID)
+                            DispatchQueue.main.async {
+                                self.subscribeAudioLevelUpdates()
+                                self.overlayManager.showError(
+                                    title: "已切换到内置麦克风",
+                                    suggestion: "原设备连接异常，已自动切换"
+                                )
+                            }
+                        } catch {
+                            DispatchQueue.main.async {
+                                initTimer.cancel()
+                                self.showMicError(deviceUID: deviceUID, error: error)
+                            }
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            initTimer.cancel()
+                            self.showMicError(deviceUID: deviceUID, error: error)
+                        }
+                    }
                 }
             }
         }
     }
 
-    private func formattedRecordingStartError(_ error: Error) -> String {
-        if let recorderError = error as? AudioRecorderError {
-            return "Failed to start recording: \(recorderError.localizedDescription)"
-        }
-
-        let lower = error.localizedDescription.lowercased()
-        if lower.contains("operation couldn't be completed") || lower.contains("operation could not be completed") {
-            return "Failed to start recording: Audio input error. Verify microphone access is granted and a working mic is selected."
-        }
-
-        let nsError = error as NSError
-        if nsError.domain == NSOSStatusErrorDomain {
-            return "Failed to start recording (audio subsystem error \(nsError.code)). Check microphone permissions and selected input device."
-        }
-
-        return "Failed to start recording: \(error.localizedDescription)"
-    }
 
     // MARK: - Batch Mode Stop & Transcribe
 

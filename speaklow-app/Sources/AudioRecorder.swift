@@ -10,6 +10,20 @@ struct AudioDevice: Identifiable {
     let uid: String
     let name: String
 
+    private static func transportType(for deviceID: AudioDeviceID) -> UInt32? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transportType: UInt32 = 0
+        var dataSize = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &transportType) == noErr else {
+            return nil
+        }
+        return transportType
+    }
+
     static func availableInputDevices() -> [AudioDevice] {
         var propertyAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
@@ -124,6 +138,26 @@ struct AudioDevice: Identifiable {
         }
         return availableInputDevices().first(where: { $0.id == deviceID })?.uid
     }
+
+    static func builtInMicrophoneUID() -> String? {
+        availableInputDevices().first { device in
+            transportType(for: device.id) == kAudioDeviceTransportTypeBuiltIn
+        }?.uid
+    }
+
+    static func deviceName(forUID uid: String) -> String? {
+        availableInputDevices().first(where: { $0.uid == uid })?.name
+    }
+
+    static func isBluetoothDevice(uid: String) -> Bool {
+        guard let deviceID = deviceID(forUID: uid),
+              let transportType = transportType(for: deviceID) else {
+            let deviceName = deviceName(forUID: uid)?.lowercased() ?? ""
+            return deviceName.contains("bluetooth")
+        }
+        return transportType == kAudioDeviceTransportTypeBluetooth ||
+            transportType == kAudioDeviceTransportTypeBluetoothLE
+    }
 }
 
 enum AudioRecorderError: LocalizedError {
@@ -182,6 +216,7 @@ class AudioRecorder: NSObject, ObservableObject {
     private var streamingOutputFormat: AVAudioFormat?
     private var streamingBuffer = Data()
     private let streamingChunkSize = 3200 // 100ms at 16kHz 16-bit mono
+    private var defaultInputDeviceListenerBlock: AudioObjectPropertyListenerBlock?
 
     func startRecording(deviceUID: String? = nil) throws {
         let t0 = CFAbsoluteTimeGetCurrent()
@@ -408,6 +443,47 @@ class AudioRecorder: NSObject, ObservableObject {
         silenceTimer = timer
 
         os_log(.info, log: recordingLog, "startRecording() complete: %.3fms total", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+    }
+
+    override init() {
+        super.init()
+
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            guard let self else { return }
+            self.invalidateEngine()
+            os_log(.info, log: recordingLog, "默认输入设备已变更，引擎已重置")
+        }
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            DispatchQueue.main,
+            block
+        )
+        guard status == noErr else {
+            os_log(.error, log: recordingLog, "注册默认输入设备监听失败: %d", status)
+            return
+        }
+        defaultInputDeviceListenerBlock = block
+    }
+
+    deinit {
+        guard let block = defaultInputDeviceListenerBlock else { return }
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            DispatchQueue.main,
+            block
+        )
     }
 
     func stopRecording() -> URL? {
