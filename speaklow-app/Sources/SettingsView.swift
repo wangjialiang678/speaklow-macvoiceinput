@@ -100,9 +100,9 @@ struct SettingsView: View {
         } footer: {
             switch appState.asrMode {
             case .batch:
-                Text("录完后统一识别，无需后台服务，适合网络不稳定或低功耗场景，约 1-2 秒延迟")
+                Text("录完后统一识别，适合网络不稳定的场景，约 1-2 秒延迟")
             case .streaming:
-                Text("边说边实时显示文字，延迟极低，需要运行后台服务（见下方「后台服务」）")
+                Text("边说边显示文字，延迟极低，需要稳定的网络连接。会在后台运行一个识别服务")
             }
         }
     }

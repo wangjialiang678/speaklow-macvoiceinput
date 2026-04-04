@@ -205,16 +205,14 @@ class ASRBridgeManager {
     private func buildEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
 
-        // Load DASHSCOPE_API_KEY from .env if not already set
-        if env["DASHSCOPE_API_KEY"] == nil || env["DASHSCOPE_API_KEY"]!.isEmpty {
-            if let key = EnvLoader.loadDashScopeAPIKey() {
-                env["DASHSCOPE_API_KEY"] = key
-                os_log(.info, log: bridgeLog, "Loaded DASHSCOPE_API_KEY from .env (length=%d)", key.count)
-            } else {
-                os_log(.error, log: bridgeLog, "DASHSCOPE_API_KEY not found in env or any .env file!")
-            }
+        // 始终优先使用 .env 文件中的 key，避免继承 shell 环境中的错误 key
+        if let key = EnvLoader.loadKeyFromConfigFiles() {
+            env["DASHSCOPE_API_KEY"] = key
+            os_log(.info, log: bridgeLog, "DASHSCOPE_API_KEY loaded from .env (length=%d)", key.count)
+        } else if let existing = env["DASHSCOPE_API_KEY"], !existing.isEmpty {
+            os_log(.info, log: bridgeLog, "DASHSCOPE_API_KEY using inherited environment")
         } else {
-            os_log(.info, log: bridgeLog, "DASHSCOPE_API_KEY found in environment")
+            os_log(.error, log: bridgeLog, "DASHSCOPE_API_KEY not found in .env or environment!")
         }
 
         return env

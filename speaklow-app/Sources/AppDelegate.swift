@@ -57,6 +57,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             appState.startAccessibilityPolling()
             // 启动时主动检测权限状态：若二进制变更（重编译），引导用户重新授权
             appState.checkAccessibilityOnLaunch()
+            // 启动提示：让用户知道 app 已就绪
+            appState.overlayManager.showLaunchToast(hotkeyName: appState.selectedHotkey.displayName)
         }
     }
 

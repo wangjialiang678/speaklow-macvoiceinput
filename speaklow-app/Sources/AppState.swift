@@ -1065,15 +1065,23 @@ final class AppState: ObservableObject, @unchecked Sendable {
             return ("语音功能出了问题", "请退出并重新打开 SpeakLow")
         }
 
-        // 4. API auth / quota errors
+        // 4. API auth / quota / billing errors
+        if desc.contains("arrearage") || desc.contains("account is in good standing") ||
+           desc.contains("overdue") {
+            return ("语音识别密钥（API Key）余额不足", "请联系应用提供者，或自行在 ~/.config/speaklow/.env 中更换")
+        }
+        if desc.contains("invalid api") || desc.contains("invalid_api_key") ||
+           desc.contains("api key") {
+            return ("语音识别密钥（API Key）无效", "请检查 ~/.config/speaklow/.env 中的配置")
+        }
         if desc.contains("401") || desc.contains("403") ||
-           desc.contains("unauthorized") || desc.contains("invalid api") ||
-           desc.contains("authentication") || desc.contains("api key") {
-            return ("API 密钥有问题", "请检查 DashScope API Key 配置")
+           desc.contains("unauthorized") || desc.contains("authentication") ||
+           desc.contains("access denied") {
+            return ("语音识别密钥（API Key）认证失败", "请联系应用提供者或检查配置")
         }
         if desc.contains("429") || desc.contains("rate limit") || desc.contains("quota") ||
            desc.contains("too many requests") {
-            return ("用得太频繁了", "请稍等一会儿再试")
+            return ("请求太频繁了", "请稍等一会儿再试")
         }
 
         // 5. Server-side error (DashScope 500 etc.)
@@ -1420,7 +1428,9 @@ extension AppState: StreamingTranscriptionDelegate {
         let desc = error.localizedDescription.lowercased()
         let isNetworkError = desc.contains("no such host") || desc.contains("dns") ||
             desc.contains("not connected to the internet") || desc.contains("network is unreachable")
-        let isAuthError = desc.contains("401") || desc.contains("403") || desc.contains("unauthorized")
+        let isAuthError = desc.contains("401") || desc.contains("403") || desc.contains("unauthorized") ||
+            desc.contains("arrearage") || desc.contains("access denied") || desc.contains("account is in good standing") ||
+            desc.contains("invalid api") || desc.contains("invalid_api_key")
 
         if isNetworkError || isAuthError {
             viLog("Streaming: unrecoverable error, stopping recording and showing error")

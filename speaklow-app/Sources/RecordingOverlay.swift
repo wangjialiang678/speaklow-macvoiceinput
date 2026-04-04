@@ -128,6 +128,54 @@ class RecordingOverlayManager {
         DispatchQueue.main.async { self._showError(title: title, suggestion: suggestion) }
     }
 
+    // MARK: - Launch Toast
+
+    private var launchToastPanel: NSPanel?
+
+    func showLaunchToast(hotkeyName: String) {
+        DispatchQueue.main.async { self._showLaunchToast(hotkeyName: hotkeyName) }
+    }
+
+    private func _showLaunchToast(hotkeyName: String) {
+        let panelWidth: CGFloat = 260
+        let panelHeight: CGFloat = 56
+
+        let panel = makeOverlayPanel(width: panelWidth, height: panelHeight)
+        panel.level = .floating
+
+        let view = LaunchToastView(hotkeyName: hotkeyName)
+        let hosting = NSHostingView(rootView: view)
+        hosting.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        hosting.autoresizingMask = [.width, .height]
+        panel.contentView = hosting
+
+        if let screen = NSScreen.main {
+            let x = screen.frame.midX - panelWidth / 2
+            let y = screen.visibleFrame.minY + screen.visibleFrame.height * 0.15
+            panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true)
+        }
+
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.3
+            panel.animator().alphaValue = 1
+        }
+
+        self.launchToastPanel = panel
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self, let panel = self.launchToastPanel else { return }
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.5
+                panel.animator().alphaValue = 0
+            }, completionHandler: {
+                panel.orderOut(nil)
+                self.launchToastPanel = nil
+            })
+        }
+    }
+
     // MARK: - Preview Panel API
 
     func showPreviewPanel() {
@@ -787,6 +835,37 @@ struct TextResultView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 10)
+                .fill(Color(white: 0.12, opacity: 0.92))
+        )
+    }
+}
+
+// MARK: - Launch Toast View
+
+struct LaunchToastView: View {
+    let hotkeyName: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 32, height: 32)
+                .cornerRadius(6)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SpeakLow 已启动")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white)
+                Text("按住\(hotkeyName)开始语音输入")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
                 .fill(Color(white: 0.12, opacity: 0.92))
         )
     }

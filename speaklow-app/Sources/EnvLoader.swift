@@ -2,21 +2,31 @@ import Foundation
 
 struct EnvLoader {
     static func loadDashScopeAPIKey() -> String? {
-        // Priority:
-        // 1. Environment variable DASHSCOPE_API_KEY
+        // Priority: .env 文件优先于环境变量，避免继承 shell 中的错误 key
+        // 1. ~/.config/speaklow/.env
+        // 2. Executable's parent directory .env
+        // 3. Environment variable DASHSCOPE_API_KEY (fallback)
+        if let key = loadKeyFromConfigFiles() {
+            return key
+        }
+
         if let value = ProcessInfo.processInfo.environment["DASHSCOPE_API_KEY"],
            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return value
         }
 
-        // 2. ~/.config/speaklow/.env
+        return nil
+    }
+
+    /// 仅从 .env 配置文件加载 key，不检查环境变量。用于 bridge 子进程环境构建，
+    /// 避免继承 shell 中的错误 key。
+    static func loadKeyFromConfigFiles() -> String? {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
         let configPath = homeDir + "/.config/speaklow/.env"
         if let key = loadKey("DASHSCOPE_API_KEY", fromEnvFile: configPath) {
             return key
         }
 
-        // 3. Executable's parent directory .env
         if let executableURL = Bundle.main.executableURL {
             let siblingPath = executableURL.deletingLastPathComponent().path + "/.env"
             if let key = loadKey("DASHSCOPE_API_KEY", fromEnvFile: siblingPath) {

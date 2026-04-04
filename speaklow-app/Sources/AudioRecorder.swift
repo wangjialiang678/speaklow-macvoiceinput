@@ -185,6 +185,8 @@ class AudioRecorder: NSObject, ObservableObject {
         return dir
     }()
     private var audioEngine: AVAudioEngine?
+    /// 失效窗口内额外持有旧引擎，避免 AVFAudio 内部队列仍在访问时被提前释放。
+    private var deferredReleasedEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var tempFileURL: URL?
     private let audioFileQueue = DispatchQueue(label: "com.speaklow.app.audiofile")
@@ -217,6 +219,8 @@ class AudioRecorder: NSObject, ObservableObject {
     private var streamingBuffer = Data()
     private let streamingChunkSize = 3200 // 100ms at 16kHz 16-bit mono
     private var defaultInputDeviceListenerBlock: AudioObjectPropertyListenerBlock?
+    /// 避免设备变更监听和静音超时等路径同时重入 invalidateEngine。
+    private var isInvalidating = false
 
     func startRecording(deviceUID: String? = nil) throws {
         let t0 = CFAbsoluteTimeGetCurrent()
@@ -455,8 +459,12 @@ class AudioRecorder: NSObject, ObservableObject {
         )
         let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             guard let self else { return }
+            guard !self.isInvalidating else {
+                os_log(.info, log: recordingLog, "默认输入设备变更时引擎正在失效中，忽略重复触发")
+                return
+            }
             self.invalidateEngine()
-            os_log(.info, log: recordingLog, "默认输入设备已变更，引擎已重置")
+            os_log(.info, log: recordingLog, "默认输入设备已变更，引擎已开始重置")
         }
         let status = AudioObjectAddPropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
@@ -559,11 +567,28 @@ class AudioRecorder: NSObject, ObservableObject {
 
     /// Tear down the audio engine so the next recording rebuilds it from scratch.
     func invalidateEngine() {
+        guard !isInvalidating else {
+            os_log(.info, log: recordingLog, "invalidateEngine() 重入，忽略本次请求")
+            return
+        }
+        isInvalidating = true
+
         _recording.withLock { $0 = false }
+        silenceTimer?.cancel()
+        silenceTimer = nil
         audioFileQueue.sync { audioFile = nil }
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
+
+        let engineToRelease = audioEngine
+        if let engineToRelease {
+            engineToRelease.inputNode.removeTap(onBus: 0)
+            engineToRelease.stop()
+            deferredReleasedEngine = engineToRelease
+            os_log(.info, log: recordingLog, "Engine invalidation: 已停止引擎并移除 tap，延迟释放旧实例")
+        } else {
+            deferredReleasedEngine = nil
+            os_log(.info, log: recordingLog, "Engine invalidation: 当前没有可释放的引擎实例")
+        }
+
         storedInputFormat = nil
         currentDeviceUID = nil
         isRecording = false
@@ -574,7 +599,26 @@ class AudioRecorder: NSObject, ObservableObject {
         audioFileQueue.sync { self.streamingBuffer.removeAll() }
         onStreamingAudioChunk = nil
         DispatchQueue.main.async { self.audioLevel = 0.0 }
-        os_log(.info, log: recordingLog, "Engine invalidated — will rebuild on next recording")
+
+        guard let engineToRelease else {
+            isInvalidating = false
+            os_log(.info, log: recordingLog, "Engine invalidated — will rebuild on next recording")
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+
+            if let currentEngine = self.audioEngine, currentEngine === engineToRelease {
+                self.audioEngine = nil
+            }
+            if let deferredEngine = self.deferredReleasedEngine, deferredEngine === engineToRelease {
+                self.deferredReleasedEngine = nil
+            }
+
+            self.isInvalidating = false
+            os_log(.info, log: recordingLog, "Engine invalidated — will rebuild on next recording")
+        }
     }
 
     private func pruneOldRecordings() {
