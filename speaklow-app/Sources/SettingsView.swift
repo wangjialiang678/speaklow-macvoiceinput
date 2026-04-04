@@ -2,149 +2,211 @@ import SwiftUI
 import AVFoundation
 import ServiceManagement
 
+// MARK: - Settings Tab Enum
+
+private enum SettingsTab: String, CaseIterable, Identifiable {
+    case general = "通用"
+    case recognition = "识别"
+    case hotwords = "用户词典"
+    case advanced = "高级"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .general: return "gearshape"
+        case .recognition: return "waveform"
+        case .hotwords: return "text.book.closed"
+        case .advanced: return "wrench.and.screwdriver"
+        }
+    }
+}
+
+// MARK: - SettingsView
+
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
 
-    // MARK: - Bridge state
+    @State private var selectedTab: SettingsTab = .general
+
+    // Bridge state
     @State private var bridgeIsHealthy: Bool? = nil
     @State private var isCheckingBridge = false
 
-    // MARK: - Diagnostics state
+    // Diagnostics state
     @State private var isRunningDiagnostics = false
     @State private var diagnosticResults: [DiagnosticResult] = []
 
-    // MARK: - Body
-
     var body: some View {
-        VStack(spacing: 0) {
-            Form {
-                statusOverviewSection()
-                generalSection()
-                hotkeySection()
-                asrModeSection()
-                aiRefineSection()
-                hotwordSection()
-                if appState.asrMode == .streaming {
-                    bridgeManagementSection()
-                }
-                accessibilitySection()
-                diagnosticsSection()
-            }
-            .formStyle(.grouped)
-            .frame(minWidth: 480)
-            .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 0) {
+            // 左侧导航栏
+            sidebar
 
-            // 版本信息（Form 外部）
-            if !buildDate.isEmpty {
-                Text("SpeakLow v\(appVersion) (build \(buildNumber)) · \(buildDate)")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, 8)
-            } else {
-                Text("SpeakLow v\(appVersion) (build \(buildNumber))")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, 8)
+            Divider()
+
+            // 右侧内容区
+            VStack(spacing: 0) {
+                contentArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                versionFooter
             }
+        }
+        .frame(width: 600, height: 480)
+        .task { await checkBridgeHealth() }
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsTab.allCases) { tab in
+                Label(tab.rawValue, systemImage: tab.icon)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
+                    )
+                    .foregroundStyle(selectedTab == tab ? .primary : .secondary)
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectedTab = tab }
+            }
+            Spacer()
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .frame(width: 130)
+    }
+
+    // MARK: - Content Area
+
+    @ViewBuilder
+    private var contentArea: some View {
+        switch selectedTab {
+        case .general:
+            generalTab
+        case .recognition:
+            recognitionTab
+        case .hotwords:
+            hotwordsTab
+        case .advanced:
+            advancedTab
         }
     }
 
-    // MARK: - Sections
+    // MARK: - 通用 Tab
 
-    @ViewBuilder
-    private func statusOverviewSection() -> some View {
-        StatusOverviewSection(appState: appState, bridgeIsHealthy: $bridgeIsHealthy)
-            .task { await checkBridgeHealth() }
-    }
+    private var generalTab: some View {
+        Form {
+            StatusOverviewSection(appState: appState, bridgeIsHealthy: $bridgeIsHealthy)
 
-    @ViewBuilder
-    private func generalSection() -> some View {
-        Section("通用") {
-            Toggle("开机自动启动", isOn: $appState.launchAtLogin)
-                .onAppear { appState.refreshLaunchAtLoginStatus() }
-        }
-    }
-
-    @ViewBuilder
-    private func hotkeySection() -> some View {
-        Section {
-            Picker("热键", selection: $appState.selectedHotkey) {
-                ForEach(HotkeyOption.allCases) { option in
-                    Text(option.displayName).tag(option)
-                }
+            Section("通用") {
+                Toggle("开机自动启动", isOn: $appState.launchAtLogin)
+                    .onAppear { appState.refreshLaunchAtLoginStatus() }
             }
-            .pickerStyle(.segmented)
-        } header: {
-            Text("听写热键")
-        } footer: {
-            if appState.selectedHotkey == .fnKey {
-                Text("提示：如果按 Fn 会打开表情选择器，请前往系统设置 > 键盘，将「按下 fn 键时」改为「无操作」")
-                    .foregroundStyle(.orange)
-            }
-        }
-    }
 
-    @ViewBuilder
-    private func asrModeSection() -> some View {
-        Section {
-            Picker("模式", selection: $appState.asrMode) {
-                ForEach(ASRMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-        } header: {
-            Text("识别模式")
-        } footer: {
-            switch appState.asrMode {
-            case .batch:
-                Text("录完后统一识别，适合网络不稳定的场景，约 1-2 秒延迟")
-            case .streaming:
-                Text("边说边显示文字，延迟极低，需要稳定的网络连接。会在后台运行一个识别服务")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func aiRefineSection() -> some View {
-        Section {
-            Toggle("启用 AI 优化", isOn: $appState.llmRefineEnabled)
-            if appState.llmRefineEnabled {
-                Picker("风格", selection: $appState.refineStyle) {
-                    ForEach(RefineStyle.allCases) { style in
-                        Text(style.displayName).tag(style)
+            Section("听写热键") {
+                Picker("热键", selection: $appState.selectedHotkey) {
+                    ForEach(HotkeyOption.allCases) { option in
+                        Text(option.displayName).tag(option)
                     }
                 }
                 .pickerStyle(.segmented)
-            }
-        } header: {
-            Text("AI 文字优化")
-        } footer: {
-            if appState.llmRefineEnabled {
-                switch appState.refineStyle {
-                case .default:
-                    Text("纠正错字和口语化表达，顺通语句，保持你的原意不变")
-                case .business:
-                    Text("改写为正式书面风格，语气严谨，适合邮件、文档、汇报")
-                case .chat:
-                    Text("保持轻松自然的语气，适当加入 emoji，适合微信、Slack 等即时通讯")
+
+                if appState.selectedHotkey == .fnKey {
+                    Text("提示：如果按 Fn 会打开表情选择器，请前往系统设置 > 键盘，将「按下 fn 键时」改为「无操作」")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
-    @ViewBuilder
-    private func hotwordSection() -> some View {
-        Section {
-            HotwordEditorView()
-        } header: {
-            Text("热词")
-        } footer: {
-            Text("管理识别时优先识别的专有名词（如人名、产品名、术语）")
+    // MARK: - 识别 Tab
+
+    private var recognitionTab: some View {
+        Form {
+            Section("识别模式") {
+                Picker("模式", selection: $appState.asrMode) {
+                    ForEach(ASRMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                switch appState.asrMode {
+                case .batch:
+                    Text("录完后统一识别，适合网络不稳定的场景，约 1-2 秒延迟")
+                        .font(.footnote).foregroundStyle(.secondary)
+                case .streaming:
+                    Text("边说边显示文字，延迟极低，需要稳定的网络连接。会在后台运行一个识别服务")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+
+            Section("AI 文字优化") {
+                Toggle("启用 AI 优化", isOn: $appState.llmRefineEnabled)
+                if appState.llmRefineEnabled {
+                    Picker("风格", selection: $appState.refineStyle) {
+                        ForEach(RefineStyle.allCases) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    switch appState.refineStyle {
+                    case .default:
+                        Text("纠正错字和口语化表达，顺通语句，保持你的原意不变")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    case .business:
+                        Text("改写为正式书面风格，语气严谨，适合邮件、文档、汇报")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    case .chat:
+                        Text("保持轻松自然的语气，适当加入 emoji，适合微信、Slack 等即时通讯")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if appState.asrMode == .streaming {
+                bridgeManagementSection()
+            }
         }
+        .formStyle(.grouped)
     }
+
+    // MARK: - 热词 Tab
+
+    private var hotwordsTab: some View {
+        Form {
+            Section("用户词典") {
+                Text("添加语音识别时需要优先识别的专有名词（如人名、产品名、术语）")
+                    .font(.footnote).foregroundStyle(.secondary)
+                HotwordEditorView(standalone: true)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - 高级 Tab
+
+    private var advancedTab: some View {
+        Form {
+            accessibilitySection()
+
+            DiagnosticsSectionView(
+                appState: appState,
+                isRunningDiagnostics: $isRunningDiagnostics,
+                diagnosticResults: $diagnosticResults
+            )
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - Shared Sections
 
     @ViewBuilder
     private func bridgeManagementSection() -> some View {
@@ -229,22 +291,23 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private func diagnosticsSection() -> some View {
-        DiagnosticsSectionView(
-            appState: appState,
-            isRunningDiagnostics: $isRunningDiagnostics,
-            diagnosticResults: $diagnosticResults
-        )
+    // MARK: - Version Footer
+
+    private var versionFooter: some View {
+        Group {
+            if !buildDate.isEmpty {
+                Text("SpeakLow v\(appVersion) (build \(buildNumber)) · \(buildDate)")
+            } else {
+                Text("SpeakLow v\(appVersion) (build \(buildNumber))")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Helpers
-
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return mins > 0 ? "\(mins) 分 \(secs) 秒" : "\(secs) 秒"
-    }
 
     private var bridgeStatusText: String {
         if isCheckingBridge { return "检查中..." }
@@ -261,8 +324,6 @@ struct SettingsView: View {
         bridgeIsHealthy = await service.checkHealth()
         isCheckingBridge = false
     }
-
-    // MARK: - Version info
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
