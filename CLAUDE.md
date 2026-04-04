@@ -70,6 +70,7 @@ Key files:
 - **TextInserter.swift** — Three-tier text insertion: AX API direct write → clipboard+Cmd+V paste → notification with copy. AX write is verified by read-back (Electron apps report success but don't write). Cmd+V paste is verified by 250ms delayed AX value read-back — catches CGEvent silently dropped by macOS (e.g., after app update when permissions are in intermediate state).
 - **TextRefineService.swift** — RefineStyle enum + thin wrapper delegating to DashScopeClient.
 - **RecordingOverlay.swift** — Notch-area waveform overlay + text result fallback panel (shown when AX/paste insertion fails) + launch toast. Contains both SwiftUI views and `RecordingOverlayManager` (panel lifecycle, notch-aware positioning, launch toast auto-dismiss).
+- **SettingsView.swift** — Settings window with left sidebar tabs (通用/识别/用户词典/密钥/高级). API Key management with save-to-`.env` and validation. Resizable window (600×620 default).
 
 ### Go Bridge (`asr-bridge/`)
 
@@ -194,7 +195,7 @@ Key env vars:
 **UI:**
 - `RecordingOverlay.swift` — Notch waveform + text fallback panel
 - `MenuBarView.swift` — Menu bar status item
-- `SettingsView.swift` — Settings window (ASR mode, hotkey, microphone, LLM toggle)
+- `SettingsView.swift` — Settings window with sidebar tabs (通用/识别/用户词典/密钥/高级). API Key management with validation, 百炼平台 guidance
 - `SetupView.swift` — First-run setup
 - `HotwordEditor.swift` — Inline hotword list editor
 

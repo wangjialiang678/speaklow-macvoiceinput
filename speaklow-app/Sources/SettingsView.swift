@@ -8,6 +8,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case general = "通用"
     case recognition = "识别"
     case hotwords = "用户词典"
+    case apiKey = "密钥"
     case advanced = "高级"
 
     var id: String { rawValue }
@@ -15,6 +16,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .general: return "gearshape"
+        case .apiKey: return "key"
         case .recognition: return "waveform"
         case .hotwords: return "text.book.closed"
         case .advanced: return "wrench.and.screwdriver"
@@ -32,6 +34,11 @@ struct SettingsView: View {
     // Bridge state
     @State private var bridgeIsHealthy: Bool? = nil
     @State private var isCheckingBridge = false
+
+    // API Key state
+    @State private var apiKeyInput = ""
+    @State private var apiKeyStatus: APIKeyStatus = .unknown
+    @State private var isValidatingKey = false
 
     // Diagnostics state
     @State private var isRunningDiagnostics = false
@@ -52,7 +59,8 @@ struct SettingsView: View {
                 versionFooter
             }
         }
-        .frame(width: 600, height: 480)
+        .frame(width: 600)
+        .frame(minHeight: 480, idealHeight: 780, maxHeight: .infinity)
         .task { await checkBridgeHealth() }
     }
 
@@ -61,7 +69,11 @@ struct SettingsView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SettingsTab.allCases) { tab in
-                Label(tab.rawValue, systemImage: tab.icon)
+                HStack(spacing: 6) {
+                    Image(systemName: tab.icon)
+                        .frame(width: 20, alignment: .center)
+                    Text(tab.rawValue)
+                }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 6)
                     .padding(.horizontal, 10)
@@ -87,6 +99,8 @@ struct SettingsView: View {
         switch selectedTab {
         case .general:
             generalTab
+        case .apiKey:
+            apiKeyTab
         case .recognition:
             recognitionTab
         case .hotwords:
@@ -104,6 +118,7 @@ struct SettingsView: View {
 
             Section("通用") {
                 Toggle("开机自动启动", isOn: $appState.launchAtLogin)
+                    .tint(.accentColor)
                     .onAppear { appState.refreshLaunchAtLoginStatus() }
             }
 
@@ -119,6 +134,107 @@ struct SettingsView: View {
                     Text("提示：如果按 Fn 会打开表情选择器，请前往系统设置 > 键盘，将「按下 fn 键时」改为「无操作」")
                         .font(.footnote)
                         .foregroundStyle(.orange)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - 密钥 Tab
+
+    private var apiKeyTab: some View {
+        Form {
+            Section("API Key") {
+                Text("SpeakLow 使用阿里云百炼平台的语音识别和大模型服务，需要配置 API Key 才能使用")
+                    .font(.footnote).foregroundStyle(.secondary)
+
+                HStack {
+                    if apiKeyInput.isEmpty {
+                        TextField("sk-...", text: $apiKeyInput)
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        SecureField("API Key", text: $apiKeyInput)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    Button("保存") {
+                        Task { await saveAndValidateAPIKey() }
+                    }
+                    .disabled(apiKeyInput.trimmingCharacters(in: .whitespaces).isEmpty || isValidatingKey)
+                }
+
+                // 状态指示
+                HStack(spacing: 6) {
+                    switch apiKeyStatus {
+                    case .unknown:
+                        if let key = EnvLoader.loadDashScopeAPIKey(), !key.isEmpty {
+                            Circle().fill(Color.green).frame(width: 8, height: 8)
+                            Text("已配置（\(maskKey(key))）")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Circle().fill(Color.red).frame(width: 8, height: 8)
+                            Text("未配置")
+                                .foregroundStyle(.red)
+                        }
+                    case .validating:
+                        ProgressView().controlSize(.small)
+                        Text("验证中...")
+                            .foregroundStyle(.secondary)
+                    case .valid:
+                        Circle().fill(Color.green).frame(width: 8, height: 8)
+                        Text("有效（\(maskKey(apiKeyInput))）")
+                            .foregroundStyle(.green)
+                    case .invalid(let reason):
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                        Text(reason)
+                            .foregroundStyle(.red)
+                    case .saved:
+                        Circle().fill(Color.green).frame(width: 8, height: 8)
+                        Text("已保存并验证通过")
+                            .foregroundStyle(.green)
+                    }
+                }
+                .font(.caption)
+            }
+
+            Section("获取 API Key") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("1. 访问阿里云百炼平台，注册或登录")
+                    Text("2. 进入「API-KEY 管理」页面，创建一个新的 API Key")
+                    Text("3. 复制 API Key（以 sk- 开头），粘贴到上方输入框")
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("打开百炼平台控制台") {
+                        if let url = URL(string: "https://bailian.console.aliyun.com/") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("需要在百炼平台开通模型服务（原 DashScope 灵积已迁移至百炼）", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Label("Coding Plan 的 API Key 不可用于语音识别", systemImage: "xmark.circle")
+                        .foregroundStyle(.orange)
+                }
+                .font(.caption)
+            }
+
+            Section("配置文件") {
+                LabeledContent("位置") {
+                    Text("~/.config/speaklow/.env")
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("在 Finder 中显示") {
+                    let path = FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent(".config/speaklow")
+                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path.path)
                 }
             }
         }
@@ -149,6 +265,7 @@ struct SettingsView: View {
 
             Section("AI 文字优化") {
                 Toggle("启用 AI 优化", isOn: $appState.llmRefineEnabled)
+                    .tint(.accentColor)
                 if appState.llmRefineEnabled {
                     Picker("风格", selection: $appState.refineStyle) {
                         ForEach(RefineStyle.allCases) { style in
@@ -325,6 +442,106 @@ struct SettingsView: View {
         isCheckingBridge = false
     }
 
+    private func maskKey(_ key: String) -> String {
+        guard key.count > 8 else { return "****" }
+        return String(key.prefix(3)) + "****" + String(key.suffix(4))
+    }
+
+    private func saveAndValidateAPIKey() async {
+        let key = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+
+        apiKeyStatus = .validating
+        isValidatingKey = true
+
+        // 1. 验证 key 格式和有效性（用一个轻量 API 调用）
+        let valid = await validateDashScopeKey(key)
+
+        if valid {
+            // 2. 保存到 ~/.config/speaklow/.env
+            saveKeyToEnvFile(key)
+            apiKeyStatus = .saved
+            viLog("API Key 已保存并验证通过")
+        }
+
+        isValidatingKey = false
+    }
+
+    private func validateDashScopeKey(_ key: String) async -> Bool {
+        // 用 DashScope models API 做轻量验证
+        guard let url = URL(string: "https://dashscope.aliyuncs.com/compatible-mode/v1/models") else {
+            apiKeyStatus = .invalid("URL 错误")
+            return false
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                apiKeyStatus = .invalid("网络错误")
+                return false
+            }
+            if http.statusCode == 200 {
+                return true
+            } else if http.statusCode == 401 {
+                apiKeyStatus = .invalid("API Key 无效，请检查是否正确")
+                return false
+            } else if http.statusCode == 403 {
+                apiKeyStatus = .invalid("API Key 无权限，请确认已开通「模型服务灵积」")
+                return false
+            } else {
+                apiKeyStatus = .invalid("验证失败（HTTP \(http.statusCode)）")
+                return false
+            }
+        } catch {
+            apiKeyStatus = .invalid("网络连接失败：\(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func saveKeyToEnvFile(_ key: String) {
+        let configDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/speaklow")
+        let envPath = configDir.appendingPathComponent(".env")
+
+        do {
+            // 确保目录存在
+            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+
+            // 读取已有内容，替换或追加 DASHSCOPE_API_KEY
+            var lines: [String] = []
+            var keyReplaced = false
+
+            if FileManager.default.fileExists(atPath: envPath.path),
+               let content = try? String(contentsOf: envPath, encoding: .utf8) {
+                for line in content.components(separatedBy: .newlines) {
+                    if line.trimmingCharacters(in: .whitespaces).hasPrefix("DASHSCOPE_API_KEY") {
+                        lines.append("DASHSCOPE_API_KEY=\(key)")
+                        keyReplaced = true
+                    } else {
+                        lines.append(line)
+                    }
+                }
+            }
+
+            if !keyReplaced {
+                lines.append("DASHSCOPE_API_KEY=\(key)")
+            }
+
+            // 去掉末尾多余空行，保留一个换行
+            let content = lines.joined(separator: "\n").trimmingCharacters(in: .newlines) + "\n"
+            try content.write(to: envPath, atomically: true, encoding: .utf8)
+            viLog("API Key 已保存到 \(envPath.path)")
+        } catch {
+            apiKeyStatus = .invalid("保存失败：\(error.localizedDescription)")
+            viLog("保存 API Key 失败: \(error)")
+        }
+    }
+
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
     }
@@ -336,6 +553,16 @@ struct SettingsView: View {
     private var buildDate: String {
         Bundle.main.infoDictionary?["BuildDate"] as? String ?? ""
     }
+}
+
+// MARK: - APIKeyStatus
+
+private enum APIKeyStatus {
+    case unknown
+    case validating
+    case valid
+    case invalid(String)
+    case saved
 }
 
 // MARK: - StatusOverviewSection
