@@ -63,13 +63,13 @@ Key files:
 - **DashScopeClient.swift** — Swift direct DashScope API client: batch ASR (qwen3-asr-flash), LLM refine (qwen-flash), hotword corpus loading. Singleton.
 - **TranscriptionStrategy.swift** — Strategy protocol + ASRMode enum + BatchStrategy + StreamingStrategy.
 - **ASRBridgeManager.swift** — Go bridge process lifecycle (launch, health check, crash auto-restart, periodic health monitor).
-- **AudioRecorder.swift** — AVAudioEngine microphone capture with silence detection. Saves recordings to `~/Library/Caches/SpeakLow/recordings/` (retains last 20). CoreAudio device-change listener auto-invalidates engine on default input device change. Provides `AudioDevice.builtInMicrophoneUID()` and `AudioDevice.isBluetoothDevice(uid:)` for fallback logic.
+- **AudioRecorder.swift** — AVAudioEngine microphone capture with silence detection. Saves recordings to `~/Library/Caches/SpeakLow/recordings/` (retains last 20). CoreAudio device-change listener auto-invalidates engine on default input device change. Uses deferred engine release (`isInvalidating` guard + 100ms delayed dealloc) to prevent AVFAudio internal queue use-after-free. Provides `AudioDevice.builtInMicrophoneUID()` and `AudioDevice.isBluetoothDevice(uid:)` for fallback logic.
 - **HotkeyManager.swift** — Global hotkey monitoring (Right Option / Fn / F5).
 - **StreamingTranscriptionService.swift** — WebSocket client for real-time ASR via `/v1/stream` (streaming mode only).
 - **TranscriptionService.swift** — Bridge HTTP transcription via `/v1/transcribe-sync` (streaming mode sync re-transcription).
 - **TextInserter.swift** — Three-tier text insertion: AX API direct write → clipboard+Cmd+V paste → notification with copy. AX write is verified by read-back (Electron apps report success but don't write). Cmd+V paste is verified by 250ms delayed AX value read-back — catches CGEvent silently dropped by macOS (e.g., after app update when permissions are in intermediate state).
 - **TextRefineService.swift** — RefineStyle enum + thin wrapper delegating to DashScopeClient.
-- **RecordingOverlay.swift** — Notch-area waveform overlay + text result fallback panel (shown when AX/paste insertion fails). Contains both SwiftUI views and `RecordingOverlayManager` (panel lifecycle, notch-aware positioning).
+- **RecordingOverlay.swift** — Notch-area waveform overlay + text result fallback panel (shown when AX/paste insertion fails) + launch toast. Contains both SwiftUI views and `RecordingOverlayManager` (panel lifecycle, notch-aware positioning, launch toast auto-dismiss).
 
 ### Go Bridge (`asr-bridge/`)
 
@@ -86,7 +86,7 @@ Dependencies: `gorilla/websocket` + `godotenv` (no external ASR framework depend
 
 ## Configuration
 
-API key lookup order: env var `DASHSCOPE_API_KEY` → `~/.config/speaklow/.env` → `.env` next to binary.
+API key lookup order: `~/.config/speaklow/.env` → `.env` next to binary → env var `DASHSCOPE_API_KEY` (fallback). The `.env` files intentionally take priority over inherited environment variables to avoid using stale keys from the parent shell.
 
 Hotword file lookup order: env var `HOTWORDS_FILE` → `~/.config/speaklow/hotwords.txt` → bundle `Resources/hotwords.txt`. Runtime reload: `speaklow-reload-hotwords` CLI (or `POST /v1/reload-hotwords` for bridge, `DistributedNotification "com.speaklow.reloadHotwords"` for app).
 
@@ -115,6 +115,7 @@ Key env vars:
 ## Known Pitfalls
 
 - **`make run` / `open SpeakLow.app` does NOT restart a running app** — macOS `open` brings the existing process to front. After rebuilding, you MUST `pkill -f SpeakLow` first, then `open build/SpeakLow.app` (or `make run`). Otherwise the old binary keeps running with stale code. This is a common source of "my fix doesn't work" confusion.
+- **AVAudioEngine deferred release**: Setting `audioEngine = nil` directly in `invalidateEngine()` triggers dealloc while AVFAudio's internal `AVAudioIOUnit` queue may still be processing the same device-change event, causing SIGSEGV. The fix: stop engine + removeTap first, hold the old engine in `deferredReleasedEngine`, then nil both references after 100ms. An `isInvalidating` flag prevents re-entry from concurrent device-change events.
 - **Microphone self-healing**: When `startRecording()` fails (e.g., Bluetooth disconnected, sleep/wake stale engine), the app auto-retries: invalidate engine → retry same device → fallback to built-in mic → show device-specific error. A CoreAudio listener on `kAudioHardwarePropertyDefaultInputDevice` proactively invalidates the engine when the default input device changes, so the next recording attempt uses a fresh engine.
 
 ## Debugging
