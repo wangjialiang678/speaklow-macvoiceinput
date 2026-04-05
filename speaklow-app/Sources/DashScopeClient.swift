@@ -26,7 +26,7 @@ enum DashScopeError: LocalizedError {
 final class DashScopeClient {
     static let shared = DashScopeClient()
 
-    private let apiKey: String?
+    private var apiKey: String?
     private var corpusText: String
     private let preamble: String
     private let promptText: String
@@ -54,6 +54,13 @@ final class DashScopeClient {
     }
 
     // MARK: - Private Helpers
+
+    /// 重载 API Key（用户在设置中保存后调用）
+    func reloadAPIKey() {
+        let newKey = EnvLoader.loadDashScopeAPIKey()
+        apiKey = newKey
+        viLog("DashScopeClient: API Key 已重载，keyPrefix=\(newKey?.prefix(10) ?? "nil")")
+    }
 
     /// 重载热词表（从用户配置文件重新读取）
     /// 文件不可读时保留旧值，不会清空 corpus

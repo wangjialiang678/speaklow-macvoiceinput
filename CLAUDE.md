@@ -60,7 +60,7 @@ Compiled with `swiftc` directly (no Xcode project/SPM). All 17 `.swift` files ar
 
 Key files:
 - **AppState.swift** — Central orchestrator. Recording lifecycle, dual-mode ASR (batch/streaming), error handling, mic self-healing (retry + built-in fallback). Largest file.
-- **DashScopeClient.swift** — Swift direct DashScope API client: batch ASR (qwen3-asr-flash), LLM refine (qwen-flash), hotword corpus loading. Singleton.
+- **DashScopeClient.swift** — Swift direct DashScope API client: batch ASR (qwen3-asr-flash), LLM refine (qwen-flash), hotword corpus loading. Singleton with `reloadAPIKey()` for runtime key refresh after user saves in Settings.
 - **TranscriptionStrategy.swift** — Strategy protocol + ASRMode enum + BatchStrategy + StreamingStrategy.
 - **ASRBridgeManager.swift** — Go bridge process lifecycle (launch, health check, crash auto-restart, periodic health monitor).
 - **AudioRecorder.swift** — AVAudioEngine microphone capture with silence detection. Saves recordings to `~/Library/Caches/SpeakLow/recordings/` (retains last 20). CoreAudio device-change listener auto-invalidates engine on default input device change. Uses deferred engine release (`isInvalidating` guard + 100ms delayed dealloc) to prevent AVFAudio internal queue use-after-free. Provides `AudioDevice.builtInMicrophoneUID()` and `AudioDevice.isBluetoothDevice(uid:)` for fallback logic.

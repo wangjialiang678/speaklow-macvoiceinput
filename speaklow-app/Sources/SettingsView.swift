@@ -29,6 +29,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
 
+    var initialTab: String? = nil
     @State private var selectedTab: SettingsTab = .general
 
     // Bridge state
@@ -62,6 +63,17 @@ struct SettingsView: View {
         .frame(width: 600)
         .frame(minHeight: 480, idealHeight: 780, maxHeight: .infinity)
         .task { await checkBridgeHealth() }
+        .onAppear {
+            if let tab = initialTab, let t = SettingsTab.allCases.first(where: { $0.id == tab || String(describing: $0) == tab }) {
+                selectedTab = t
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("switchSettingsTab"))) { notif in
+            if let tab = notif.userInfo?["tab"] as? String,
+               let t = SettingsTab.allCases.first(where: { $0.id == tab || String(describing: $0) == tab }) {
+                selectedTab = t
+            }
+        }
     }
 
     // MARK: - Sidebar
@@ -460,6 +472,8 @@ struct SettingsView: View {
         if valid {
             // 2. 保存到 ~/.config/speaklow/.env
             saveKeyToEnvFile(key)
+            // 3. 通知运行态客户端刷新缓存的 key
+            DashScopeClient.shared.reloadAPIKey()
             apiKeyStatus = .saved
             viLog("API Key 已保存并验证通过")
         }

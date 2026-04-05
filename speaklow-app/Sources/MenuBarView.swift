@@ -110,4 +110,5 @@ struct MenuBarView: View {
 extension Notification.Name {
     static let showSetup = Notification.Name("showSetup")
     static let showSettings = Notification.Name("showSettings")
+    static let showSettingsAPIKey = Notification.Name("showSettingsAPIKey")
 }

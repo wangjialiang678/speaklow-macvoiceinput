@@ -22,9 +22,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: .showSettings,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowSettingsAPIKey),
+            name: .showSettingsAPIKey,
+            object: nil
+        )
 
-        // 仅在 streaming 模式启动 Bridge，并做幂等保护避免重复启动
-        if appState.asrMode == .streaming {
+        // 仅在 streaming 模式且 API Key 可用时启动 Bridge
+        // 缺 key 时跳过，避免 bridge 因无 key 而 log.Fatal 崩溃循环
+        let hasAPIKey = EnvLoader.loadDashScopeAPIKey() != nil && !EnvLoader.loadDashScopeAPIKey()!.isEmpty
+        if appState.asrMode == .streaming && hasAPIKey {
             if !asrBridgeManager.isRunning {
                 do {
                     try asrBridgeManager.start()
@@ -38,6 +46,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if asrBridgeManager.isRunning {
                 asrBridgeManager.startHealthMonitor()
             }
+        } else if !hasAPIKey {
+            viLog("API Key 未配置，跳过 Bridge 启动")
         } else {
             viLog("Batch mode: skipping ASR Bridge startup")
         }
@@ -57,8 +67,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             appState.startAccessibilityPolling()
             // 启动时主动检测权限状态：若二进制变更（重编译），引导用户重新授权
             appState.checkAccessibilityOnLaunch()
-            // 启动提示：让用户知道 app 已就绪
-            appState.overlayManager.showLaunchToast(hotkeyName: appState.selectedHotkey.displayName)
+
+            // 启动时检测 API Key：未配置则自动打开密钥设置
+            if let key = EnvLoader.loadDashScopeAPIKey(), !key.isEmpty {
+                appState.overlayManager.showLaunchToast(hotkeyName: appState.selectedHotkey.displayName)
+            } else {
+                viLog("启动检测：API Key 未配置，自动打开密钥设置")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.showSettingsWindow(initialTab: "apiKey")
+                }
+            }
         }
     }
 
@@ -84,28 +102,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         showSettingsWindow()
     }
 
+    @objc private func handleShowSettingsAPIKey() {
+        showSettingsWindow(initialTab: "apiKey")
+    }
+
     @objc private func handleReloadHotwords() {
         DashScopeClient.shared.reloadCorpusText()
         viLog("热词表已通过外部通知重载")
     }
 
-    private func showSettingsWindow() {
-        if let settingsWindow, settingsWindow.isVisible {
-            settingsWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
+    private func showSettingsWindow(initialTab: String? = nil) {
         if settingsWindow == nil {
-            presentSettingsWindow()
+            presentSettingsWindow(initialTab: initialTab)
         } else {
             settingsWindow?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // 窗口已存在时（含最小化/隐藏），通知切换 tab
+            if let tab = initialTab {
+                NotificationCenter.default.post(name: .init("switchSettingsTab"), object: nil, userInfo: ["tab": tab])
+            }
         }
     }
 
-    private func presentSettingsWindow() {
-        let settingsView = SettingsView()
+    private func presentSettingsWindow(initialTab: String? = nil) {
+        let settingsView = SettingsView(initialTab: initialTab)
             .environmentObject(appState)
         let hostingView = NSHostingView(rootView: settingsView)
 
@@ -167,5 +187,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 保持 .regular 策略，Dock 始终显示图标
         appState.startHotkeyMonitoring()
         appState.startAccessibilityPolling()
+
+        // Setup 完成后检测 API Key：未配置则引导到密钥设置
+        if let key = EnvLoader.loadDashScopeAPIKey(), !key.isEmpty {
+            appState.overlayManager.showLaunchToast(hotkeyName: appState.selectedHotkey.displayName)
+        } else {
+            viLog("Setup 完成但 API Key 未配置，自动打开密钥设置")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.showSettingsWindow(initialTab: "apiKey")
+            }
+        }
     }
 }

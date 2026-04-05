@@ -150,6 +150,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var audioLevelCancellable: AnyCancellable?
     private var transcribingIndicatorTask: Task<Void, Never>?
     private var audioDeviceListenerBlock: AudioObjectPropertyListenerBlock?
+    private var lastAPIKeyAlertTime: CFAbsoluteTime = 0
 
     private static func makeStrategy(for mode: ASRMode) -> TranscriptionStrategy {
         switch mode {
@@ -530,6 +531,21 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func startRecording() {
         // Prevent double-entry: hotkey can fire twice before isRecording is set
         guard !isRecording else { return }
+
+        // API Key 未配置时拦截录音，引导用户去设置（节流：3 秒内不重复弹窗）
+        if EnvLoader.loadDashScopeAPIKey() == nil || EnvLoader.loadDashScopeAPIKey()!.isEmpty {
+            let now = CFAbsoluteTimeGetCurrent()
+            if now - lastAPIKeyAlertTime < 3.0 { return }
+            lastAPIKeyAlertTime = now
+            viLog("录音拦截：API Key 未配置")
+            overlayManager.showError(title: "API Key 未配置", suggestion: "请在设置 → 密钥中配置")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard self != nil else { return }
+                NotificationCenter.default.post(name: .showSettingsAPIKey, object: nil)
+            }
+            return
+        }
+
         isRecording = true
 
         let t0 = CFAbsoluteTimeGetCurrent()
