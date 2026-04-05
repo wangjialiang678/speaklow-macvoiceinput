@@ -293,13 +293,27 @@ func pcmRMS(pcm []byte) float64 {
 	return math.Sqrt(sumSq / float64(n))
 }
 
+// corpusLeakPrefix is the start of the hotword corpus text sent to DashScope.
+// When the user is silent, qwen3-asr-flash-realtime "transcribes" the corpus
+// prompt character by character. Early partials ("本次", "本次对话") are too short
+// to contain the full marker string, so we also check if the corpus prefix starts
+// with the partial text (prefix match). This only applies when confirmed is empty
+// (no real speech detected yet), to avoid filtering real user speech like "本次".
+const corpusLeakPrefix = "本次对话涉及"
+
 // isCorpusLeak returns true if the text looks like a leaked hotword corpus prompt
-// rather than actual user speech. qwen3-asr-flash-realtime will "transcribe" the
-// corpus.text from session config when the user is silent — the model treats the
-// prompt as text to read back. Verified: stash field contains the corpus content
-// verbatim, growing character by character, with text="" (no confirmed speech).
-func isCorpusLeak(s string) bool {
-	return strings.Contains(s, "本次对话涉及") || strings.Contains(s, "专有名词可能出现")
+// rather than actual user speech. confirmed is the "text" field from DashScope;
+// it's empty when the model is echoing the corpus and non-empty for real speech.
+func isCorpusLeak(s string, confirmed string) bool {
+	if strings.Contains(s, "本次对话涉及") || strings.Contains(s, "专有名词可能出现") {
+		return true
+	}
+	// Prefix match: early partials like "本次" or "本次对话" are prefixes of the corpus header.
+	// Only trigger when confirmed is empty (no real speech), to avoid false positives.
+	if confirmed == "" && len(s) > 0 && len(s) < len(corpusLeakPrefix) && strings.HasPrefix(corpusLeakPrefix, s) {
+		return true
+	}
+	return false
 }
 
 // isFillerOnly returns true if the text consists solely of common ASR filler words
@@ -347,7 +361,7 @@ func relayDashscopeEvents(clientConn *websocket.Conn, clientWriteMu *sync.Mutex,
 			confirmed := strings.TrimSpace(getString(event, "text"))
 			display := confirmed + transcript
 			// Detect corpus text appearing as transcription — log truncated event for diagnosis
-			if isCorpusLeak(display) {
+			if isCorpusLeak(display, confirmed) {
 				log.Printf("[stream] CORPUS LEAK in partial! confirmed=%q stash=%q raw=%.100s...", confirmed, transcript, eventData)
 				continue
 			}
@@ -364,7 +378,7 @@ func relayDashscopeEvents(clientConn *websocket.Conn, clientWriteMu *sync.Mutex,
 
 		case "conversation.item.input_audio_transcription.completed":
 			transcript := strings.TrimSpace(getString(event, "transcript"))
-			if isCorpusLeak(transcript) {
+			if isCorpusLeak(transcript, "") {
 				log.Printf("[stream] CORPUS LEAK in completed! transcript=%q raw=%.100s...", transcript, eventData)
 				continue
 			}

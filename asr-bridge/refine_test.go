@@ -25,16 +25,24 @@ package main
 //     - BadPrompt：模拟用户写了不安全的 prompt，验证 preamble 仍能防护
 //   - TestRefine_Styles：多风格测试
 //
-// 所有测试需要 DASHSCOPE_API_KEY 环境变量，实际调用 API。
-// 运行：cd asr-bridge && DASHSCOPE_API_KEY=sk-xxx go test -v -timeout 300s
+// 所有测试需要 DASHSCOPE_API_KEY，实际调用 API。
+// Key 查找顺序：~/.config/speaklow/.env → 环境变量 DASHSCOPE_API_KEY
+// 运行：cd asr-bridge && go test -v -timeout 300s
 
 import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/joho/godotenv"
 )
 
 func getAPIKey(t *testing.T) string {
+	// 优先从 .env 文件加载（Overload 覆盖 shell 中可能过期的旧 key）
+	envPath := expandHome("~/.config/speaklow/.env")
+	if envPath != "" {
+		_ = godotenv.Overload(envPath)
+	}
 	key := os.Getenv("DASHSCOPE_API_KEY")
 	if key == "" {
 		t.Skip("DASHSCOPE_API_KEY 未设置，跳过在线测试")
