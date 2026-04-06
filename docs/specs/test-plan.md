@@ -137,6 +137,17 @@ log stream --predicate 'subsystem == "com.speaklow.app" AND category == "Recordi
 # c) 对比两次识别结果的准确率
 ```
 
+### 2.7 近期修复验证测试
+
+| 测试项 | 步骤 | 预期 |
+|--------|------|------|
+| 短按 corpus 泄漏 | 按住热键 < 1 秒，不说话，松手 | 无文字输出（不应显示"本次"或"本次对话"） |
+| 短按 overlay 消失 | 按住热键约 1 秒，不说话，松手 | overlay（三个跳动的点）在 1-2 秒内自动消失 |
+| Bridge 端口冲突 | 手动启动一个 asr-bridge 占住 18089 端口，再启动 app | app 应接管已有 bridge，不进入无限重启循环 |
+| 单实例保护 | app 运行时再次执行 `open SpeakLow.app` | 激活已有窗口，不创建第二个实例 |
+| API Key 未配置 | 删除 `~/.config/speaklow/.env`，启动 app | 自动打开密钥设置页面；按热键时提示配置 API Key |
+| 麦克风自愈 | 录音过程中拔掉外接麦克风 | 自动回退到内建麦克风，无需重启 app |
+
 ## 3. 端到端测试流程
 
 1. 构建 asr-bridge 二进制 → 验证 health 端点
