@@ -1468,6 +1468,13 @@ extension AppState: StreamingTranscriptionDelegate {
             return
         }
 
+        // 用户已松手（isRecording=false）：录音已停止，batch fallback 不会触发，直接清理
+        if !isRecording {
+            viLog("Streaming FAILED after recording stopped — dismissing overlay")
+            overlayManager.dismiss()
+            return
+        }
+
         // Recoverable: keep recording for batch fallback.
         // When user releases hotkey, handleHotkeyUp will call stopAndTranscribeBatch().
     }
