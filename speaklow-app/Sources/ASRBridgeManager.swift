@@ -13,6 +13,44 @@ class ASRBridgeManager {
 
     func start() throws {
         isStopping = false
+
+        // 0. 检查端口是否已被占用（旧 bridge 进程残留）
+        if isPortInUse(18089) {
+            os_log(.info, log: bridgeLog, "端口 18089 已被占用，尝试健康检查...")
+            // 异步检查旧进程是否健康，若健康则直接接管，若不健康则尝试杀死再继续
+            Task {
+                let service = TranscriptionService()
+                if await service.checkHealth() {
+                    // 旧 bridge 健康，直接接管，不启动新进程
+                    os_log(.info, log: bridgeLog, "检测到已有健康的 bridge 进程，直接接管（跳过启动）")
+                    viLog("检测到已运行的 Bridge 进程（端口 18089），直接接管")
+                    await MainActor.run {
+                        self.consecutiveRestarts = 0
+                    }
+                    return
+                }
+                // 旧进程不健康，尝试杀死占用端口的进程
+                os_log(.info, log: bridgeLog, "端口 18089 被占用但 bridge 不健康，尝试释放端口...")
+                viLog("Bridge 端口 18089 被旧进程占用且不健康，尝试杀死旧进程...")
+                killProcessOnPort(18089)
+                // 稍等端口释放后再启动
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await MainActor.run {
+                    do {
+                        try self.launchBridgeProcess()
+                    } catch {
+                        os_log(.error, log: bridgeLog, "释放端口后启动 bridge 失败: %{public}@", error.localizedDescription)
+                        viLog("释放端口后启动 Bridge 失败：\(error.localizedDescription)")
+                    }
+                }
+            }
+            return
+        }
+
+        try launchBridgeProcess()
+    }
+
+    private func launchBridgeProcess() throws {
         // 1. Find asr-bridge binary
         let bundlePath = Bundle.main.bundlePath
         let primaryPath = bundlePath + "/Contents/MacOS/asr-bridge"
@@ -69,11 +107,13 @@ class ASRBridgeManager {
                     return
                 }
 
-                viLog("Bridge 崩溃（exit \(process.terminationStatus)），1 秒后自动重启（第 \(self.consecutiveRestarts)/\(self.maxConsecutiveRestarts) 次）...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                // 指数退避延迟：1s, 2s, 4s
+                let delay = pow(2.0, Double(self.consecutiveRestarts - 1))
+                viLog("Bridge 崩溃（exit \(process.terminationStatus)），\(Int(delay)) 秒后自动重启（第 \(self.consecutiveRestarts)/\(self.maxConsecutiveRestarts) 次）...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                     guard let self else { return }
                     do {
-                        try self.start()
+                        try self.launchBridgeProcess()
                     } catch {
                         os_log(.error, log: bridgeLog, "自动重启失败: %{public}@", error.localizedDescription)
                     }
@@ -85,21 +125,71 @@ class ASRBridgeManager {
         process = proc
         os_log(.info, log: bridgeLog, "Started asr-bridge pid=%d", proc.processIdentifier)
 
-        // 4. Poll /health up to 5 seconds
+        // 4. Poll /health up to 5 seconds — 只有 OUR 进程还在运行时才重置重启计数器
         Task {
             let service = TranscriptionService()
+            let pid = proc.processIdentifier
             let deadline = Date().addingTimeInterval(5)
             while Date() < deadline {
                 if await service.checkHealth() {
                     await MainActor.run {
-                        self.consecutiveRestarts = 0
+                        // 只有当健康响应确实来自我们启动的进程时才重置计数器
+                        if self.process?.isRunning == true && self.process?.processIdentifier == pid {
+                            self.consecutiveRestarts = 0
+                            os_log(.info, log: bridgeLog, "asr-bridge is READY (pid=%d)", pid)
+                        } else {
+                            os_log(.info, log: bridgeLog, "asr-bridge 健康响应来自其他进程，不重置重启计数器 (expected pid=%d)", pid)
+                        }
                     }
-                    os_log(.info, log: bridgeLog, "asr-bridge is READY")
                     return
                 }
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
             os_log(.error, log: bridgeLog, "asr-bridge health check TIMED OUT after 5s")
+        }
+    }
+
+    /// 检测指定端口是否已有进程在监听
+    private func isPortInUse(_ port: Int) -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        task.arguments = ["-ti", "tcp:\(port)"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            return !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } catch {
+            return false
+        }
+    }
+
+    /// 杀死占用指定端口的进程
+    private func killProcessOnPort(_ port: Int) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        task.arguments = ["-ti", "tcp:\(port)"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let pids = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .components(separatedBy: "\n")
+                .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) } ?? []
+            for pid in pids {
+                os_log(.info, log: bridgeLog, "杀死占用端口 18089 的进程 pid=%d", pid)
+                kill(pid, SIGTERM)
+            }
+        } catch {
+            os_log(.error, log: bridgeLog, "killProcessOnPort 失败: %{public}@", error.localizedDescription)
         }
     }
 
@@ -156,7 +246,7 @@ class ASRBridgeManager {
     func restart() throws {
         os_log(.info, log: bridgeLog, "Restarting asr-bridge...")
         stop()
-        try start()
+        try launchBridgeProcess()
     }
 
     /// Check bridge health; if unhealthy, restart and wait for it to become ready.

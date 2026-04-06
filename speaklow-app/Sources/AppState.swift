@@ -37,7 +37,15 @@ func viLog(_ message: String) {
 
 /// 检测 DashScope ASR 在静默时回传的 corpus.text（热词提示文本）
 func isCorpusLeak(_ text: String) -> Bool {
-    text.contains("本次对话涉及") || text.contains("专有名词可能出现")
+    if text.contains("本次对话涉及") || text.contains("专有名词可能出现") {
+        return true
+    }
+    // 短文本前缀匹配：ASR 在用户沉默时可能只输出 corpus header 的开头（如"本次"、"本次对话"）
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.count <= 8 && "本次对话涉及以下".hasPrefix(trimmed) && !trimmed.isEmpty {
+        return true
+    }
+    return false
 }
 
 final class AppState: ObservableObject, @unchecked Sendable {

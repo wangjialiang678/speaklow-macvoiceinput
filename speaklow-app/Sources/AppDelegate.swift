@@ -7,6 +7,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let asrBridgeManager = ASRBridgeManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 单实例检测：若已有其他 SpeakLow 进程在运行，激活它并退出当前实例
+        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+        let otherInstances = runningApps.filter { $0 != NSRunningApplication.current }
+        if !otherInstances.isEmpty {
+            otherInstances.first?.activate(options: .activateIgnoringOtherApps)
+            viLog("另一个 SpeakLow 实例已在运行，退出当前实例")
+            NSApp.terminate(nil)
+            return
+        }
+
         // Give AppState a reference to bridge manager for auto-restart
         appState.bridgeManager = asrBridgeManager
 
