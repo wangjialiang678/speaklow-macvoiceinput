@@ -480,6 +480,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioLevelCancellable = nil
         engineInitTimer?.cancel()
         engineInitTimer = nil
+        // 清理流式录音状态，防止 WebSocket 连接泄漏
+        if isStreaming {
+            viLog("showMicError: cleaning up orphan streaming session")
+            streamingService?.disconnect()
+            streamingService = nil
+            audioRecorder.onStreamingAudioChunk = nil
+            isStreaming = false
+        }
         isRecording = false
         errorMessage = message
         statusText = "Error"
@@ -858,6 +866,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 initTimer.cancel()
                 self.audioLevelCancellable?.cancel()
                 self.audioLevelCancellable = nil
+                // 清理流式状态，防止 WebSocket 泄漏
+                if self.isStreaming {
+                    viLog("Silence timeout: cleaning up streaming session")
+                    self.streamingService?.disconnect()
+                    self.streamingService = nil
+                    self.audioRecorder.onStreamingAudioChunk = nil
+                    self.isStreaming = false
+                }
                 self.isRecording = false
                 self.statusText = "麦克风没有声音"
                 self.errorMessage = "麦克风没有声音"
@@ -1181,7 +1197,10 @@ extension AppState: StreamingTranscriptionDelegate {
     func streamingDidReceivePartial(text: String) {
         // 拦截 corpus leak：DashScope 在静默时会把 session config 中的热词提示文本回传
         if isCorpusLeak(text) { return }
-        viLog("Streaming partial: \(text.prefix(80))")
+        // 节流日志：只在文本实际变化时记录，避免每秒数条重复日志
+        if text != lastPartialText {
+            viLog("Streaming partial: \(text.prefix(80))")
+        }
         let display = committedSentences.joined() + text
         overlayManager.updatePreviewText(display)
         lastPartialText = text
@@ -1346,11 +1365,39 @@ extension AppState: StreamingTranscriptionDelegate {
         lastTranscript = text
 
         if llmRefineEnabled {
-            if usePreRefined && !sentenceRefineCache.isEmpty {
-                let refined = committedSentences.map { sentenceRefineCache[$0] ?? $0 }.joined()
-                if !refined.isEmpty {
-                    viLog("applyFinalTranscript: using pre-refined sentences, pending=\(pendingRefineCount)")
-                    insertAndFinish(originalText: text, finalText: refined)
+            // 优先复用 pre-refine 缓存（流式模式下 streamingDidReceiveSentence 已预发起）
+            if usePreRefined {
+                // 所有 pre-refine 已完成，直接用缓存
+                if pendingRefineCount == 0 && !sentenceRefineCache.isEmpty {
+                    let refined = committedSentences.map { sentenceRefineCache[$0] ?? $0 }.joined()
+                    if !refined.isEmpty {
+                        viLog("applyFinalTranscript: using pre-refined sentences (all cached)")
+                        insertAndFinish(originalText: text, finalText: refined)
+                        return
+                    }
+                }
+                // 有正在进行的 pre-refine，等待完成后复用缓存，避免重复 refine
+                if pendingRefineCount > 0 {
+                    viLog("applyFinalTranscript: waiting for \(pendingRefineCount) pending pre-refine(s)")
+                    overlayManager.updatePreviewText("✨ 正在优化...")
+                    let committed = committedSentences
+                    Task {
+                        // 最多等 3 秒
+                        for _ in 0..<30 {
+                            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                            let ready = await MainActor.run { self.pendingRefineCount == 0 }
+                            if ready { break }
+                        }
+                        await MainActor.run {
+                            let refined = committed.map { self.sentenceRefineCache[$0] ?? $0 }.joined()
+                            if !refined.isEmpty {
+                                viLog("applyFinalTranscript: pre-refine completed, using cached result")
+                                self.insertAndFinish(originalText: text, finalText: refined)
+                            } else {
+                                self.insertAndFinish(originalText: text, finalText: text)
+                            }
+                        }
+                    }
                     return
                 }
             }
@@ -1453,6 +1500,12 @@ extension AppState: StreamingTranscriptionDelegate {
     func streamingDidFail(error: Error) {
         guard !streamingHasFinished else {
             viLog("Streaming: close callback after finish, ignoring")
+            return
+        }
+        // 防止已清理的旧 WS 回调影响当前 session
+        // showMicError/silenceTimeout 已设 isStreaming=false，此处不应再处理
+        guard isStreaming else {
+            viLog("Streaming: fail callback but isStreaming=false (stale WS), ignoring")
             return
         }
 
