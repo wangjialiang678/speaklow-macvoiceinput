@@ -455,13 +455,27 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func showMicError(deviceUID: String?, error: Error) {
         let resolvedDeviceUID = resolvedRecordingDeviceUID(deviceUID)
         let deviceName = resolvedDeviceUID.flatMap { AudioDevice.deviceName(forUID: $0) } ?? "未知设备"
-        let message = "麦克风启动失败（\(deviceName)）"
-        let isBluetooth = resolvedDeviceUID.map { AudioDevice.isBluetoothDevice(uid: $0) } ?? false
-        let suggestion = isBluetooth
-            ? "蓝牙设备连接异常，请断开重连或切换到内置麦克风"
-            : "请检查麦克风设备，必要时在系统设置中切换输入设备"
 
-        viLog("Recording start failed: \(message) - \(error)")
+        // 检测 kAUStartIO 失败（error 2003329396）—— 通常是麦克风权限被撤销
+        // 常见于 rebuild 后代码签名变更，macOS TCC 将权限标记为 stale
+        let nsError = error as NSError
+        let isPermissionError = nsError.domain == "com.apple.coreaudio.avfaudio" && nsError.code == 2003329396
+
+        let message: String
+        let suggestion: String
+        if isPermissionError {
+            message = "麦克风权限需要重新授权"
+            suggestion = "应用更新后 macOS 需要重新授权麦克风。请前往 系统设置 → 隐私与安全性 → 麦克风，关闭再打开 SpeakLow 的开关"
+            viLog("Recording start failed: 麦克风权限错误（kAUStartIO 2003329396），可能是代码签名变更导致权限 stale")
+        } else {
+            message = "麦克风启动失败（\(deviceName)）"
+            let isBluetooth = resolvedDeviceUID.map { AudioDevice.isBluetoothDevice(uid: $0) } ?? false
+            suggestion = isBluetooth
+                ? "蓝牙设备连接异常，请断开重连或切换到内置麦克风"
+                : "请检查麦克风设备，必要时在系统设置中切换输入设备"
+            viLog("Recording start failed: \(message) - \(error)")
+        }
+
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
         engineInitTimer?.cancel()
