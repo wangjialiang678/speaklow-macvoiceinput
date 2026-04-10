@@ -10,6 +10,11 @@ class ASRBridgeManager {
     private var consecutiveHealthFailures = 0
     private var consecutiveRestarts = 0
     private let maxConsecutiveRestarts = 3
+    /// 冷却窗口内的崩溃总次数（5 分钟重置）
+    private var crashCountInWindow = 0
+    private var crashWindowStart: Date = .distantPast
+    private let maxCrashesInWindow = 10
+    private let crashWindowDuration: TimeInterval = 300 // 5 分钟
 
     func start() throws {
         isStopping = false
@@ -101,6 +106,20 @@ class ASRBridgeManager {
                 guard !self.isStopping else { return }
 
                 self.consecutiveRestarts += 1
+
+                // 冷却窗口：5 分钟内崩溃超过 10 次则彻底停止
+                let now = Date()
+                if now.timeIntervalSince(self.crashWindowStart) > self.crashWindowDuration {
+                    self.crashCountInWindow = 0
+                    self.crashWindowStart = now
+                }
+                self.crashCountInWindow += 1
+
+                if self.crashCountInWindow > self.maxCrashesInWindow {
+                    os_log(.error, log: bridgeLog, "asr-bridge 5 分钟内崩溃 %d 次，停止自动重启", self.crashCountInWindow)
+                    viLog("Bridge 5 分钟内崩溃 \(self.crashCountInWindow) 次，停止自动重启。请检查 API Key 配置或端口冲突")
+                    return
+                }
                 if self.consecutiveRestarts > self.maxConsecutiveRestarts {
                     os_log(.error, log: bridgeLog, "asr-bridge 连续重启超过上限（%d），停止自动重启", self.maxConsecutiveRestarts)
                     viLog("Bridge 连续重启超过 \(self.maxConsecutiveRestarts) 次，停止自动重启，请检查配置")
@@ -221,7 +240,9 @@ class ASRBridgeManager {
                 await MainActor.run {
                     if healthy {
                         self.consecutiveHealthFailures = 0
-                        self.consecutiveRestarts = 0
+                        // 注意：不重置 consecutiveRestarts，避免掩盖崩溃循环
+                        // consecutiveRestarts 只在 launchBridgeProcess 健康检查中
+                        // 确认 OUR 进程存活时才重置
                     } else {
                         self.consecutiveHealthFailures += 1
                         viLog("Bridge health check failed (\(self.consecutiveHealthFailures) consecutive)")
