@@ -881,6 +881,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
             } catch {
                 viLog("Streaming recording start failed on first attempt: \(error.localizedDescription)")
                 self.audioRecorder.invalidateEngine()
+                // 等待 200ms 让旧 engine 完全释放（invalidateEngine 内部有 100ms deferred release）
+                Thread.sleep(forTimeInterval: 0.2)
                 do {
                     try self.audioRecorder.startRecording(deviceUID: deviceUID)
                     DispatchQueue.main.async {
@@ -891,6 +893,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     let builtInUID = AudioDevice.builtInMicrophoneUID()
                     if let builtInUID, deviceUID != builtInUID {
                         self.audioRecorder.invalidateEngine()
+                        Thread.sleep(forTimeInterval: 0.2)
                         do {
                             try self.audioRecorder.startRecording(deviceUID: builtInUID)
                             DispatchQueue.main.async {
