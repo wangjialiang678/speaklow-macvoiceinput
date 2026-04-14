@@ -53,10 +53,18 @@ run: all
 	@pkill -f '/SpeakLow.app/Contents/MacOS/asr-bridge' >/dev/null 2>&1 || true
 	open "$(APP_BUNDLE)"
 
-install: all
+install: clean all
 	@echo "Installing to /Applications/$(APP_NAME).app ..."
+	@pkill -9 -f '/SpeakLow.app/Contents/MacOS/SpeakLow' >/dev/null 2>&1 || true
+	@pkill -9 -f '/SpeakLow.app/Contents/MacOS/asr-bridge' >/dev/null 2>&1 || true
+	@sleep 1
+	@rm -rf "/Applications/$(APP_NAME).app"
 	@cp -R "$(APP_BUNDLE)" "/Applications/$(APP_NAME).app"
-	@echo "Done. You can now launch $(APP_NAME) from Launchpad."
+	@echo "Verifying binary..."
+	@test -f "/Applications/$(APP_NAME).app/Contents/MacOS/$(APP_NAME)" || (echo "ERROR: binary not found!" && exit 1)
+	@open "/Applications/$(APP_NAME).app"
+	@sleep 1
+	@pgrep -f '/Applications/SpeakLow.app/Contents/MacOS/SpeakLow' >/dev/null && echo "✓ $(APP_NAME) is running (PID $$(pgrep -f '/Applications/SpeakLow.app/Contents/MacOS/SpeakLow'))" || echo "WARNING: $(APP_NAME) failed to start"
 
 uninstall:
 	@echo "Removing /Applications/$(APP_NAME).app ..."

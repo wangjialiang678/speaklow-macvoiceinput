@@ -874,13 +874,25 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     self.audioRecorder.onStreamingAudioChunk = nil
                     self.isStreaming = false
                 }
+                _ = self.audioRecorder.stopRecording()
                 self.isRecording = false
+
+                // 蓝牙麦克风静默时，自动提示切换到内置麦克风
+                let defaultUID = AudioDevice.defaultInputDeviceUID()
+                let isBluetooth = defaultUID.map { AudioDevice.isBluetoothDevice(uid: $0) } ?? false
+                let suggestion = isBluetooth
+                    ? "蓝牙麦克风无声音输入，请尝试在设置中切换到内置麦克风"
+                    : "请检查麦克风是否正常连接"
+                if isBluetooth {
+                    viLog("Silence timeout: 当前为蓝牙设备(\(defaultUID ?? "unknown"))，建议切换到内置麦克风")
+                }
+
                 self.statusText = "麦克风没有声音"
                 self.errorMessage = "麦克风没有声音"
                 self.playSound("Basso", volume: self.soundVolumeError)
                 self.overlayManager.showError(
                     title: "麦克风没有声音",
-                    suggestion: "请检查麦克风是否正常连接"
+                    suggestion: suggestion
                 )
             }
         }
