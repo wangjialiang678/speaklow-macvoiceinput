@@ -149,6 +149,10 @@ struct AudioDevice: Identifiable {
         availableInputDevices().first(where: { $0.uid == uid })?.name
     }
 
+    static func uid(forDeviceID deviceID: AudioDeviceID) -> String? {
+        availableInputDevices().first(where: { $0.id == deviceID })?.uid
+    }
+
     static func isBluetoothDevice(uid: String) -> Bool {
         guard let deviceID = deviceID(forUID: uid),
               let transportType = transportType(for: deviceID) else {
@@ -163,6 +167,10 @@ struct AudioDevice: Identifiable {
 enum AudioRecorderError: LocalizedError {
     case invalidInputFormat(String)
     case missingInputDevice
+    case requestedInputDeviceNotFound(String)
+    case setCurrentDeviceFailed(OSStatus)
+    case currentDeviceReadbackFailed(OSStatus)
+    case inputDeviceBindingMismatch(expectedUID: String, actualUID: String?)
 
     var errorDescription: String? {
         switch self {
@@ -170,6 +178,14 @@ enum AudioRecorderError: LocalizedError {
             return "Invalid input format: \(details)"
         case .missingInputDevice:
             return "No audio input device available."
+        case .requestedInputDeviceNotFound(let uid):
+            return "Requested input device not found: \(uid)"
+        case .setCurrentDeviceFailed(let status):
+            return "Failed to set current input device: \(status)"
+        case .currentDeviceReadbackFailed(let status):
+            return "Failed to read back current input device: \(status)"
+        case .inputDeviceBindingMismatch(let expectedUID, let actualUID):
+            return "Input device binding mismatch: expected \(expectedUID), actual \(actualUID ?? "unknown")"
         }
     }
 }
@@ -194,7 +210,12 @@ class AudioRecorder: NSObject, ObservableObject {
     private var firstBufferLogged = false
     private var bufferCount: Int = 0
     private var currentDeviceUID: String?
+    private var requestedDeviceUID: String?
+    private var defaultDeviceUID: String?
+    private var actualBoundDeviceUID: String?
     private var storedInputFormat: AVAudioFormat?
+    private var hotkeyDownTime: CFAbsoluteTime?
+    private var recentBufferRMS: [Float] = []
     /// Voice Processing IO 降噪是否成功启用
     private(set) var voiceProcessingEnabled = false
 
@@ -222,12 +243,70 @@ class AudioRecorder: NSObject, ObservableObject {
     /// 避免设备变更监听和静音超时等路径同时重入 invalidateEngine。
     private var isInvalidating = false
 
+    func prepareForRecordingSession(
+        hotkeyDownAt: Date,
+        selectedDeviceUID: String?,
+        defaultDeviceUID: String?
+    ) {
+        hotkeyDownTime = hotkeyDownAt.timeIntervalSinceReferenceDate
+        requestedDeviceUID = selectedDeviceUID
+        self.defaultDeviceUID = defaultDeviceUID
+        actualBoundDeviceUID = nil
+        recentBufferRMS.removeAll()
+        viLog(
+            "AudioRecorder session prepared: selectedUID=\(selectedDeviceUID ?? "nil"), " +
+            "defaultUID=\(defaultDeviceUID ?? "nil")"
+        )
+    }
+
+    private func hotkeyElapsedMs(now: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) -> Double {
+        let baseline = hotkeyDownTime ?? recordingStartTime
+        return (now - baseline) * 1000
+    }
+
+    private func appendRecentRMS(_ rms: Float) {
+        recentBufferRMS.append(rms)
+        if recentBufferRMS.count > 10 {
+            recentBufferRMS.removeFirst(recentBufferRMS.count - 10)
+        }
+    }
+
+    private func recentRMSDescription() -> String {
+        if recentBufferRMS.isEmpty {
+            return "[]"
+        }
+        let values = recentBufferRMS.map { String(format: "%.6f", $0) }
+        return "[\(values.joined(separator: ", "))]"
+    }
+
+    private func currentDeviceUID(from inputUnit: AudioUnit) throws -> String? {
+        var currentDeviceID = AudioDeviceID(0)
+        var currentSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let readStatus = AudioUnitGetProperty(
+            inputUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &currentDeviceID,
+            &currentSize
+        )
+        guard readStatus == noErr else {
+            throw AudioRecorderError.currentDeviceReadbackFailed(readStatus)
+        }
+        return AudioDevice.uid(forDeviceID: currentDeviceID)
+    }
+
     func startRecording(deviceUID: String? = nil) throws {
         let t0 = CFAbsoluteTimeGetCurrent()
         recordingStartTime = t0
+        if hotkeyDownTime == nil {
+            hotkeyDownTime = t0
+        }
         firstBufferLogged = false
         bufferCount = 0
         readyFired = false
+        recentBufferRMS.removeAll()
+        actualBoundDeviceUID = nil
         let resolvedDeviceUID: String? = {
             guard let uid = deviceUID, !uid.isEmpty else {
                 return AudioDevice.defaultInputDeviceUID()
@@ -246,8 +325,25 @@ class AudioRecorder: NSObject, ObservableObject {
         os_log(.info, log: recordingLog, "AVCaptureDevice check: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
 
         // Reuse existing engine if same device, otherwise build new one
-        if let _ = audioEngine, currentDeviceUID == resolvedDeviceUID {
+        if let engine = audioEngine, currentDeviceUID == resolvedDeviceUID {
             os_log(.info, log: recordingLog, "reusing existing engine: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+            let actualBoundUID = try currentDeviceUID(from: engine.inputNode.audioUnit!)
+            actualBoundDeviceUID = actualBoundUID
+            currentDeviceUID = actualBoundUID ?? resolvedDeviceUID
+            viLog(
+                "AudioRecorder device binding: selectedUID=\(requestedDeviceUID ?? "nil"), " +
+                "defaultUID=\(defaultDeviceUID ?? "nil"), " +
+                "targetUID=\(resolvedDeviceUID ?? "nil"), " +
+                "setStatus=reused_engine, actualBoundUID=\(actualBoundUID ?? "nil")"
+            )
+            if let uid = resolvedDeviceUID, !uid.isEmpty, actualBoundUID != uid {
+                throw AudioRecorderError.inputDeviceBindingMismatch(expectedUID: uid, actualUID: actualBoundUID)
+            }
+            let currentFormat = engine.inputNode.outputFormat(forBus: 0)
+            viLog(
+                "AudioRecorder input format: sampleRate=\(Int(currentFormat.sampleRate)), " +
+                "channelCount=\(currentFormat.channelCount), actualBoundUID=\(actualBoundUID ?? "nil")"
+            )
         } else {
             // Tear down old engine if device changed
             if audioEngine != nil {
@@ -259,13 +355,21 @@ class AudioRecorder: NSObject, ObservableObject {
             let engine = AVAudioEngine()
             os_log(.info, log: recordingLog, "AVAudioEngine created: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
 
+            let inputNode = engine.inputNode
+            os_log(.info, log: recordingLog, "inputNode accessed: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+
+            let inputUnit = inputNode.audioUnit!
+            var setDeviceStatus = noErr
+
             // Set specific input device if requested
-            if let uid = resolvedDeviceUID, !uid.isEmpty,
-               let deviceID = AudioDevice.deviceID(forUID: uid) {
+            if let uid = resolvedDeviceUID, !uid.isEmpty {
+                guard let deviceID = AudioDevice.deviceID(forUID: uid) else {
+                    viLog("AudioRecorder device binding failed: requestedUID=\(uid) not found, selectedUID=\(requestedDeviceUID ?? "nil"), defaultUID=\(defaultDeviceUID ?? "nil")")
+                    throw AudioRecorderError.requestedInputDeviceNotFound(uid)
+                }
                 os_log(.info, log: recordingLog, "device lookup resolved to %d: %.3fms", deviceID, (CFAbsoluteTimeGetCurrent() - t0) * 1000)
-                let inputUnit = engine.inputNode.audioUnit!
                 var id = deviceID
-                AudioUnitSetProperty(
+                setDeviceStatus = AudioUnitSetProperty(
                     inputUnit,
                     kAudioOutputUnitProperty_CurrentDevice,
                     kAudioUnitScope_Global,
@@ -275,8 +379,23 @@ class AudioRecorder: NSObject, ObservableObject {
                 )
             }
 
-            let inputNode = engine.inputNode
-            os_log(.info, log: recordingLog, "inputNode accessed: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+            let actualBoundUID = try currentDeviceUID(from: inputUnit)
+            actualBoundDeviceUID = actualBoundUID
+            currentDeviceUID = actualBoundUID ?? resolvedDeviceUID
+            viLog(
+                "AudioRecorder device binding: selectedUID=\(requestedDeviceUID ?? "nil"), " +
+                "defaultUID=\(defaultDeviceUID ?? "nil"), " +
+                "targetUID=\(resolvedDeviceUID ?? "nil"), " +
+                "setStatus=\(setDeviceStatus), actualBoundUID=\(actualBoundUID ?? "nil")"
+            )
+            if let uid = resolvedDeviceUID, !uid.isEmpty {
+                guard setDeviceStatus == noErr else {
+                    throw AudioRecorderError.setCurrentDeviceFailed(setDeviceStatus)
+                }
+                guard actualBoundUID == uid else {
+                    throw AudioRecorderError.inputDeviceBindingMismatch(expectedUID: uid, actualUID: actualBoundUID)
+                }
+            }
 
             // TODO: Voice Processing IO 降噪暂不启用
             // 原因：启用后 inputNode 格式变为 48kHz 3ch，AVAudioConverter 转 16kHz mono 时
@@ -285,6 +404,10 @@ class AudioRecorder: NSObject, ObservableObject {
 
             let inputFormat = inputNode.outputFormat(forBus: 0)
             os_log(.info, log: recordingLog, "inputFormat retrieved (rate=%.0f, ch=%d): %.3fms", inputFormat.sampleRate, inputFormat.channelCount, (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+            viLog(
+                "AudioRecorder input format: sampleRate=\(Int(inputFormat.sampleRate)), " +
+                "channelCount=\(inputFormat.channelCount), actualBoundUID=\(actualBoundUID ?? "nil")"
+            )
             guard inputFormat.sampleRate > 0 else {
                 throw AudioRecorderError.invalidInputFormat("Invalid sample rate: \(inputFormat.sampleRate)")
             }
@@ -322,6 +445,15 @@ class AudioRecorder: NSObject, ObservableObject {
                     let elapsed = (CFAbsoluteTimeGetCurrent() - self.recordingStartTime) * 1000
                     os_log(.info, log: recordingLog, "buffer #%d at %.3fms, frames=%d, rms=%.6f", self.bufferCount, elapsed, buffer.frameLength, rms)
                 }
+                self.appendRecentRMS(rms)
+
+                if !self.firstBufferLogged {
+                    self.firstBufferLogged = true
+                    viLog(
+                        "AudioRecorder first buffer: hotkeyElapsedMs=\(Int(self.hotkeyElapsedMs())), " +
+                        "frames=\(buffer.frameLength), rms=\(String(format: "%.6f", rms))"
+                    )
+                }
 
                 // Fire ready callback on first non-silent buffer
                 if !self.readyFired && rms > 0 {
@@ -330,6 +462,10 @@ class AudioRecorder: NSObject, ObservableObject {
                     self.silenceTimer = nil
                     let elapsed = (CFAbsoluteTimeGetCurrent() - self.recordingStartTime) * 1000
                     os_log(.info, log: recordingLog, "FIRST non-silent buffer at %.3fms — recording ready", elapsed)
+                    viLog(
+                        "AudioRecorder first non-silent buffer: hotkeyElapsedMs=\(Int(self.hotkeyElapsedMs())), " +
+                        "rms=\(String(format: "%.6f", rms)), actualBoundUID=\(self.actualBoundDeviceUID ?? "nil")"
+                    )
                     self.onRecordingReady?()
                 }
 
@@ -439,6 +575,12 @@ class AudioRecorder: NSObject, ObservableObject {
         timer.setEventHandler { [weak self] in
             guard let self, !self.readyFired else { return }
             os_log(.error, log: recordingLog, "Silence timeout — no audio detected in 2s, engine may be stale")
+            viLog(
+                "AudioRecorder silence timeout: selectedUID=\(self.requestedDeviceUID ?? "nil"), " +
+                "defaultUID=\(self.defaultDeviceUID ?? "nil"), " +
+                "actualBoundUID=\(self.actualBoundDeviceUID ?? "nil"), " +
+                "bufferCount=\(self.bufferCount), recentRMS=\(self.recentRMSDescription())"
+            )
             // Force engine teardown so next recording rebuilds it
             self.invalidateEngine()
             self.onSilenceTimeout?()
@@ -591,12 +733,14 @@ class AudioRecorder: NSObject, ObservableObject {
 
         storedInputFormat = nil
         currentDeviceUID = nil
+        actualBoundDeviceUID = nil
         isRecording = false
         smoothedLevel = 0.0
         streamingConverter = nil
         streamingOutputFormat = nil
         voiceProcessingEnabled = false
         audioFileQueue.sync { self.streamingBuffer.removeAll() }
+        recentBufferRMS.removeAll()
         onStreamingAudioChunk = nil
         DispatchQueue.main.async { self.audioLevel = 0.0 }
 

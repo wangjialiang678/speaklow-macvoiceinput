@@ -169,6 +169,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
     }
 
+    private enum RecordingSessionPhase: String {
+        case idle
+        case hotkeyPressed
+        case engineStarted
+        case audioReady
+    }
+
     // Streaming state
     private var streamingService: StreamingTranscriptionService?
     private var isStreaming = false
@@ -183,6 +190,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var engineInitTimer: DispatchSourceTimer?
     private var sentenceRefineCache: [String: String] = [:]
     private var pendingRefineCount = 0
+    private var recordingSessionPhase: RecordingSessionPhase = .idle
+    private var activeRecordingSessionID: UUID?
+    private var hotkeyPressedAt: Date?
+    private var captureEngineStartedAt: Date?
 
     init() {
         rotateLogIfNeeded()
@@ -443,6 +454,99 @@ final class AppState: ObservableObject, @unchecked Sendable {
         return deviceUID
     }
 
+    private var hasRecordingSessionInFlight: Bool {
+        recordingSessionPhase != .idle
+    }
+
+    private func isCurrentRecordingSession(_ sessionID: UUID?) -> Bool {
+        guard let sessionID else { return false }
+        return activeRecordingSessionID == sessionID && hasRecordingSessionInFlight
+    }
+
+    private func beginRecordingSessionState() {
+        let sessionID = UUID()
+        let now = Date()
+        let defaultUID = AudioDevice.defaultInputDeviceUID()
+        activeRecordingSessionID = sessionID
+        recordingSessionPhase = .hotkeyPressed
+        hotkeyPressedAt = now
+        captureEngineStartedAt = nil
+        recordingStartTime = nil
+        isRecording = false
+        audioRecorder.prepareForRecordingSession(
+            hotkeyDownAt: now,
+            selectedDeviceUID: selectedMicrophoneID,
+            defaultDeviceUID: defaultUID
+        )
+        viLog(
+            "Recording session phase=hotkeyPressed: selectedUID=\(selectedMicrophoneID), " +
+            "resolvedUID=\(resolvedRecordingDeviceUID(selectedMicrophoneID) ?? "nil"), " +
+            "defaultUID=\(defaultUID ?? "nil"), asrMode=\(asrMode.rawValue)"
+        )
+    }
+
+    private func markCaptureEngineStarted(for sessionID: UUID) {
+        guard isCurrentRecordingSession(sessionID) else {
+            viLog("Recording session engineStarted ignored for stale session")
+            return
+        }
+        let now = Date()
+        captureEngineStartedAt = now
+        if recordingSessionPhase == .audioReady {
+            let hotkeyToEngineMs = hotkeyPressedAt.map { Int(now.timeIntervalSince($0) * 1000) } ?? -1
+            viLog("Recording session engineStarted observed after audioReady: hotkeyToEngineMs=\(hotkeyToEngineMs)")
+            isRecording = true
+            return
+        }
+        recordingSessionPhase = .engineStarted
+        isRecording = true
+        let hotkeyToEngineMs = hotkeyPressedAt.map { Int(now.timeIntervalSince($0) * 1000) } ?? -1
+        viLog("Recording session phase=engineStarted: hotkeyToEngineMs=\(hotkeyToEngineMs)")
+    }
+
+    private func markRecordingReady(for sessionID: UUID) {
+        guard isCurrentRecordingSession(sessionID) else {
+            viLog("Recording session audioReady ignored for stale session")
+            return
+        }
+        recordingSessionPhase = .audioReady
+        recordingStartTime = Date()
+        isRecording = true
+        let hotkeyToReadyMs = hotkeyPressedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+        let engineToReadyMs = captureEngineStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+        viLog(
+            "Recording session phase=audioReady: hotkeyToReadyMs=\(hotkeyToReadyMs), " +
+            "engineToReadyMs=\(engineToReadyMs)"
+        )
+    }
+
+    private func resetRecordingSessionState(reason: String) {
+        if hasRecordingSessionInFlight {
+            let hotkeyMs = hotkeyPressedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            let engineMs = captureEngineStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            let readyMs = recordingStartTime.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            viLog(
+                "Recording session reset: reason=\(reason), phase=\(recordingSessionPhase.rawValue), " +
+                "sinceHotkeyMs=\(hotkeyMs), sinceEngineMs=\(engineMs), sinceReadyMs=\(readyMs)"
+            )
+        }
+        activeRecordingSessionID = nil
+        recordingSessionPhase = .idle
+        hotkeyPressedAt = nil
+        captureEngineStartedAt = nil
+        recordingStartTime = nil
+        isRecording = false
+    }
+
+    private func elapsedSinceReady() -> TimeInterval? {
+        guard let recordingStartTime else { return nil }
+        return Date().timeIntervalSince(recordingStartTime)
+    }
+
+    private func elapsedSinceHotkeyMs() -> Int {
+        hotkeyPressedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? 0
+    }
+
     private func subscribeAudioLevelUpdates() {
         audioLevelCancellable?.cancel()
         audioLevelCancellable = audioRecorder.$audioLevel
@@ -488,7 +592,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             audioRecorder.onStreamingAudioChunk = nil
             isStreaming = false
         }
-        isRecording = false
+        resetRecordingSessionState(reason: "mic_error")
         errorMessage = message
         statusText = "Error"
         overlayManager.showError(title: message, suggestion: suggestion)
@@ -515,14 +619,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func handleHotkeyDown() {
-        viLog("handleHotkeyDown() fired, isRecording=\(isRecording), isTranscribing=\(isTranscribing)")
-        guard !isRecording && !isTranscribing else { return }
+        viLog("handleHotkeyDown() fired, phase=\(recordingSessionPhase.rawValue), isRecording=\(isRecording), isTranscribing=\(isTranscribing)")
+        guard !hasRecordingSessionInFlight && !isTranscribing else { return }
         startRecording()
     }
 
     private func handleHotkeyUp() {
-        viLog("handleHotkeyUp() fired, isRecording=\(isRecording), isStreaming=\(isStreaming), asrMode=\(asrMode.rawValue)")
-        guard isRecording else { return }
+        viLog("handleHotkeyUp() fired, phase=\(recordingSessionPhase.rawValue), isRecording=\(isRecording), isStreaming=\(isStreaming), asrMode=\(asrMode.rawValue)")
+        guard hasRecordingSessionInFlight else { return }
 
         if strategy.needsBridge && isStreaming {
             // FIXME: StreamingStrategy 仍是过渡实现，实际停止逻辑继续走 AppState 现有流程
@@ -544,7 +648,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     func toggleRecording() {
         os_log(.info, log: recordingLog, "toggleRecording() called, isRecording=%{public}d", isRecording)
-        if isRecording {
+        if hasRecordingSessionInFlight {
             switch asrMode {
             case .batch:
                 stopAndTranscribeBatch()
@@ -560,7 +664,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     private func startRecording() {
         // Prevent double-entry: hotkey can fire twice before isRecording is set
-        guard !isRecording else { return }
+        guard !hasRecordingSessionInFlight else { return }
 
         // API Key 未配置时拦截录音，引导用户去设置（节流：3 秒内不重复弹窗）
         if EnvLoader.loadDashScopeAPIKey() == nil || EnvLoader.loadDashScopeAPIKey()!.isEmpty {
@@ -576,7 +680,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             return
         }
 
-        isRecording = true
+        beginRecordingSessionState()
 
         let t0 = CFAbsoluteTimeGetCurrent()
         viLog("startRecording() entered")
@@ -591,7 +695,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
         hasAccessibility = AXIsProcessTrusted()
         viLog("AXIsProcessTrusted() = \(hasAccessibility)")
         guard ensureMicrophoneAccess() else {
-            isRecording = false
             return
         }
         beginRecording()
@@ -609,6 +712,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     if granted {
                         self?.beginRecording()
                     } else {
+                        self?.resetRecordingSessionState(reason: "microphone_access_denied")
                         self?.errorMessage = "Microphone permission denied. Grant access in System Settings > Privacy & Security > Microphone."
                         self?.statusText = "No Microphone"
                         self?.showMicrophonePermissionAlert()
@@ -617,6 +721,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             }
             return false
         default:
+            resetRecordingSessionState(reason: "microphone_access_denied")
             errorMessage = "Microphone permission denied. Grant access in System Settings > Privacy & Security > Microphone."
             statusText = "No Microphone"
             showMicrophonePermissionAlert()
@@ -628,15 +733,16 @@ final class AppState: ObservableObject, @unchecked Sendable {
         os_log(.info, log: recordingLog, "beginRecording() entered, asrMode=\(self.asrMode.rawValue)")
         errorMessage = nil
         statusText = "Starting..."
+        let sessionID = activeRecordingSessionID
 
         Task { [weak self] in
             guard let self else { return }
             let prepared = await self.strategy.prepare(bridgeManager: self.bridgeManager)
             await MainActor.run {
-                guard self.isRecording else { return }
+                guard self.isCurrentRecordingSession(sessionID) else { return }
                 guard prepared else {
                     viLog("beginRecording: strategy prepare failed")
-                    self.isRecording = false
+                    self.resetRecordingSessionState(reason: "strategy_prepare_failed")
                     self.statusText = "语音功能异常"
                     self.errorMessage = "语音功能出了问题"
                     self.playSound("Basso", volume: self.soundVolumeError)
@@ -662,6 +768,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     /// Batch 模式：直接开始录音，无需 bridge
     private func _beginRecordingBatch() {
         viLog("Batch mode: starting recording (no bridge needed)")
+        let sessionID = activeRecordingSessionID
 
         // Show initializing dots only if engine takes longer than 0.5s
         var overlayShown = false
@@ -680,8 +787,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioRecorder.onRecordingReady = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard self.isCurrentRecordingSession(sessionID) else { return }
                 initTimer.cancel()
-                self.recordingStartTime = Date()
+                if let sessionID {
+                    self.markRecordingReady(for: sessionID)
+                }
                 self.statusText = "Recording..."
                 if overlayShown {
                     self.overlayManager.transitionToRecording()
@@ -697,10 +807,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioRecorder.onSilenceTimeout = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard self.isCurrentRecordingSession(sessionID) else { return }
                 initTimer.cancel()
                 self.audioLevelCancellable?.cancel()
                 self.audioLevelCancellable = nil
-                self.isRecording = false
+                self.resetRecordingSessionState(reason: "batch_silence_timeout")
                 self.statusText = "麦克风没有声音"
                 self.errorMessage = "麦克风没有声音"
                 self.playSound("Basso", volume: self.soundVolumeError)
@@ -716,6 +827,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
             do {
                 try self.audioRecorder.startRecording(deviceUID: deviceUID)
                 DispatchQueue.main.async {
+                    guard self.isCurrentRecordingSession(sessionID) else {
+                        viLog("Batch mode: engine started after session ended, ignoring")
+                        return
+                    }
+                    if let sessionID {
+                        self.markCaptureEngineStarted(for: sessionID)
+                    }
                     self.subscribeAudioLevelUpdates()
                 }
             } catch {
@@ -724,6 +842,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 do {
                     try self.audioRecorder.startRecording(deviceUID: deviceUID)
                     DispatchQueue.main.async {
+                        guard self.isCurrentRecordingSession(sessionID) else {
+                            viLog("Batch mode: retry engine started after session ended, ignoring")
+                            return
+                        }
+                        if let sessionID {
+                            self.markCaptureEngineStarted(for: sessionID)
+                        }
                         self.subscribeAudioLevelUpdates()
                     }
                 } catch {
@@ -734,6 +859,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         do {
                             try self.audioRecorder.startRecording(deviceUID: builtInUID)
                             DispatchQueue.main.async {
+                                guard self.isCurrentRecordingSession(sessionID) else {
+                                    viLog("Batch mode: built-in fallback started after session ended, ignoring")
+                                    return
+                                }
+                                if let sessionID {
+                                    self.markCaptureEngineStarted(for: sessionID)
+                                }
                                 self.subscribeAudioLevelUpdates()
                                 self.overlayManager.showError(
                                     title: "已切换到内置麦克风",
@@ -761,6 +893,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func _beginRecordingStreaming() {
         // Pre-flight: check if asr-bridge is reachable; auto-restart if not
         let healthService = TranscriptionService()
+        let sessionID = activeRecordingSessionID
         Task {
             var bridgeHealthy = await healthService.checkHealth()
 
@@ -781,7 +914,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             if !bridgeHealthy {
                 viLog("Pre-flight: asr-bridge health check failed")
                 await MainActor.run {
-                    self.isRecording = false
+                    self.resetRecordingSessionState(reason: "streaming_bridge_unhealthy")
                     self.statusText = "语音功能异常"
                     self.errorMessage = "语音功能出了问题"
                     self.playSound("Basso", volume: self.soundVolumeError)
@@ -793,7 +926,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 return
             }
             await MainActor.run {
-                guard self.isRecording else {
+                guard self.isCurrentRecordingSession(sessionID) else {
                     viLog("Pre-flight: user released key during health check, aborting")
                     return
                 }
@@ -803,6 +936,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func _beginRecordingAfterHealthCheck() {
+        let sessionID = activeRecordingSessionID
         // Show initializing dots only if engine takes longer than 0.5s to start
         var overlayShown = false
         engineInitTimer?.cancel()
@@ -845,9 +979,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioRecorder.onRecordingReady = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard self.isCurrentRecordingSession(sessionID) else { return }
                 initTimer.cancel()
                 os_log(.info, log: recordingLog, "first real audio — transitioning to waveform")
-                self.recordingStartTime = Date()
+                if let sessionID {
+                    self.markRecordingReady(for: sessionID)
+                }
                 self.statusText = "Recording..."
                 if overlayShown {
                     self.overlayManager.transitionToRecording()
@@ -862,6 +999,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioRecorder.onSilenceTimeout = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard self.isCurrentRecordingSession(sessionID) else { return }
                 viLog("Silence timeout — stopping recording and showing error")
                 initTimer.cancel()
                 self.audioLevelCancellable?.cancel()
@@ -875,7 +1013,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     self.isStreaming = false
                 }
                 _ = self.audioRecorder.stopRecording()
-                self.isRecording = false
+                self.resetRecordingSessionState(reason: "streaming_silence_timeout")
 
                 // 蓝牙麦克风静默时，自动提示切换到内置麦克风
                 let defaultUID = AudioDevice.defaultInputDeviceUID()
@@ -904,6 +1042,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 try self.audioRecorder.startRecording(deviceUID: deviceUID)
                 os_log(.info, log: recordingLog, "audioRecorder.startRecording() done: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
                 DispatchQueue.main.async {
+                    guard self.isCurrentRecordingSession(sessionID) else {
+                        viLog("Streaming mode: engine started after session ended, ignoring")
+                        return
+                    }
+                    if let sessionID {
+                        self.markCaptureEngineStarted(for: sessionID)
+                    }
                     self.subscribeAudioLevelUpdates()
                 }
             } catch {
@@ -914,6 +1059,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 do {
                     try self.audioRecorder.startRecording(deviceUID: deviceUID)
                     DispatchQueue.main.async {
+                        guard self.isCurrentRecordingSession(sessionID) else {
+                            viLog("Streaming mode: retry engine started after session ended, ignoring")
+                            return
+                        }
+                        if let sessionID {
+                            self.markCaptureEngineStarted(for: sessionID)
+                        }
                         self.subscribeAudioLevelUpdates()
                     }
                 } catch {
@@ -925,6 +1077,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         do {
                             try self.audioRecorder.startRecording(deviceUID: builtInUID)
                             DispatchQueue.main.async {
+                                guard self.isCurrentRecordingSession(sessionID) else {
+                                    viLog("Streaming mode: built-in fallback started after session ended, ignoring")
+                                    return
+                                }
+                                if let sessionID {
+                                    self.markCaptureEngineStarted(for: sessionID)
+                                }
                                 self.subscribeAudioLevelUpdates()
                                 self.overlayManager.showError(
                                     title: "已切换到内置麦克风",
@@ -959,18 +1118,25 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
 
-        let elapsed = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0.0
-        if elapsed < 0.2 {
-            viLog("Batch: 录音时长 \(Int(elapsed * 1000))ms < 200ms，丢弃")
+        guard recordingSessionPhase == .audioReady, let elapsed = elapsedSinceReady() else {
+            viLog(
+                "Batch: recording stopped before audioReady, phase=\(recordingSessionPhase.rawValue), " +
+                "sinceHotkeyMs=\(elapsedSinceHotkeyMs())"
+            )
             _ = audioRecorder.stopRecording()
-            recordingStartTime = nil
-            isRecording = false
+            resetRecordingSessionState(reason: "batch_stop_before_ready")
             overlayManager.dismiss()
             return
         }
-        recordingStartTime = nil
+        if elapsed < 0.2 {
+            viLog("Batch: 录音时长 \(Int(elapsed * 1000))ms < 200ms，丢弃")
+            _ = audioRecorder.stopRecording()
+            resetRecordingSessionState(reason: "batch_too_short")
+            overlayManager.dismiss()
+            return
+        }
+        resetRecordingSessionState(reason: "batch_stop_transcribe")
 
-        isRecording = false
         isTranscribing = true
         statusText = "识别中..."
         self.playSound("Pop", volume: self.soundVolumeStop)
@@ -1048,15 +1214,32 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioLevelCancellable?.cancel()
         audioLevelCancellable = nil
 
-        let elapsed = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0.0
+        guard recordingSessionPhase == .audioReady, let elapsed = elapsedSinceReady() else {
+            viLog(
+                "stopStreamingRecording: stopped before audioReady, phase=\(recordingSessionPhase.rawValue), " +
+                "sinceHotkeyMs=\(elapsedSinceHotkeyMs())"
+            )
+            audioRecorder.onStreamingAudioChunk = nil
+            _ = audioRecorder.stopRecording()
+            recordingDuration = 0
+            wavFileURL = nil
+            resetRecordingSessionState(reason: "streaming_stop_before_ready")
+            safetyTimeoutWork?.cancel()
+            safetyTimeoutWork = nil
+            streamingHasFinished = true
+            streamingService?.disconnect()
+            streamingService = nil
+            isStreaming = false
+            overlayManager.dismiss()
+            return
+        }
         if elapsed < 0.2 {
             viLog("stopStreamingRecording: 录音时长 \(Int(elapsed * 1000))ms < 200ms，丢弃")
             audioRecorder.onStreamingAudioChunk = nil
             _ = audioRecorder.stopRecording()
-            recordingStartTime = nil
             recordingDuration = 0
             wavFileURL = nil
-            isRecording = false
+            resetRecordingSessionState(reason: "streaming_too_short")
             safetyTimeoutWork?.cancel()
             safetyTimeoutWork = nil
             streamingHasFinished = true
@@ -1072,11 +1255,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
         } else {
             recordingDuration = 0
         }
-        recordingStartTime = nil
 
         // Stop recording (flushes remaining audio buffer)
         wavFileURL = audioRecorder.stopRecording()
-        isRecording = false
+        resetRecordingSessionState(reason: "streaming_stop_finalize")
 
         // Tell streaming service we're done sending audio
         streamingService?.stop()
@@ -1541,7 +1723,7 @@ extension AppState: StreamingTranscriptionDelegate {
         if isNetworkError || isAuthError {
             viLog("Streaming: unrecoverable error, stopping recording and showing error")
             _ = audioRecorder.stopRecording()
-            isRecording = false
+            resetRecordingSessionState(reason: "streaming_unrecoverable_error")
             let (errTitle, errSuggestion) = userFriendlyTranscriptionError(error)
             statusText = errTitle
             errorMessage = error.localizedDescription
