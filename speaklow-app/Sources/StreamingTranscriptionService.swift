@@ -27,6 +27,15 @@ class StreamingTranscriptionService {
     private var isConnected = false
     private var partialCount = 0
 
+    // PCM buffered between WS task creation and "started" event arrival.
+    // Before the bridge completes DashScope handshake (~2-5s observed on slow networks),
+    // audio chunks used to be dropped silently. We now queue them and flush on `started`.
+    // Cap prevents unbounded memory if `started` never arrives.
+    private let bufferQueue = DispatchQueue(label: "com.speaklow.streaming.buffer")
+    private var pendingChunks: [Data] = []
+    private var bufferedBytes = 0
+    private let maxBufferBytes = 64 * 1024 // 2s @ 16kHz mono 16bit
+
     private let logger = Logger(subsystem: "com.speaklow.app", category: "StreamingTranscription")
 
     init(bridgeURL: String = "ws://localhost:18089") {
@@ -76,8 +85,17 @@ class StreamingTranscriptionService {
     }
 
     func sendAudioChunk(_ pcmData: Data) {
-        guard webSocketTask != nil, isConnected else { return }
+        guard webSocketTask != nil else { return }
 
+        if !isConnected {
+            enqueuePendingChunk(pcmData)
+            return
+        }
+
+        sendAudioNow(pcmData)
+    }
+
+    private func sendAudioNow(_ pcmData: Data) {
         let base64 = pcmData.base64EncodedString()
         let msg: [String: Any] = [
             "type": "audio",
@@ -91,6 +109,40 @@ class StreamingTranscriptionService {
             if let error = error {
                 self?.logger.error("send audio failed: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func enqueuePendingChunk(_ pcmData: Data) {
+        bufferQueue.sync {
+            pendingChunks.append(pcmData)
+            bufferedBytes += pcmData.count
+            // Drop oldest chunks when over cap — keep the most recent 2s of audio.
+            while bufferedBytes > maxBufferBytes && !pendingChunks.isEmpty {
+                let dropped = pendingChunks.removeFirst()
+                bufferedBytes -= dropped.count
+            }
+        }
+    }
+
+    private func flushPendingChunks() {
+        let chunks: [Data] = bufferQueue.sync {
+            let out = pendingChunks
+            pendingChunks.removeAll(keepingCapacity: false)
+            bufferedBytes = 0
+            return out
+        }
+        if chunks.isEmpty { return }
+        let total = chunks.reduce(0) { $0 + $1.count }
+        viLog("WS started, flushing \(chunks.count) buffered chunks (\(total) bytes)")
+        for chunk in chunks {
+            sendAudioNow(chunk)
+        }
+    }
+
+    private func clearPendingChunks() {
+        bufferQueue.sync {
+            pendingChunks.removeAll(keepingCapacity: false)
+            bufferedBytes = 0
         }
     }
 
@@ -111,6 +163,7 @@ class StreamingTranscriptionService {
     func disconnect() {
         logger.info("disconnecting")
         isConnected = false
+        clearPendingChunks()
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
     }
@@ -156,6 +209,7 @@ class StreamingTranscriptionService {
             logger.info("bridge: started")
             viLog("WS connected to \(bridgeURL)/v1/stream")
             isConnected = true
+            flushPendingChunks()
             DispatchQueue.main.async {
                 self.delegate?.streamingDidStart()
             }
@@ -192,12 +246,16 @@ class StreamingTranscriptionService {
 
         case "error":
             let errorMsg = json["error"] as? String ?? "unknown"
-            logger.error("bridge: error \(errorMsg)")
-            viLog("WS closed: bridge error — \(errorMsg)")
+            let code = (json["code"] as? String) ?? ""
+            logger.error("bridge: error \(errorMsg) code=\(code)")
+            viLog("WS closed: bridge error — \(errorMsg) [code=\(code.isEmpty ? "none" : code)]")
             partialCount = 0
             isConnected = false
+            let streamErr: StreamingError = code.isEmpty
+                ? .bridgeError(errorMsg)
+                : .bridgeErrorWithCode(code: code, message: errorMsg)
             DispatchQueue.main.async {
-                self.delegate?.streamingDidFail(error: StreamingError.bridgeError(errorMsg))
+                self.delegate?.streamingDidFail(error: streamErr)
             }
 
         default:
@@ -212,12 +270,21 @@ enum StreamingError: LocalizedError {
     case invalidURL
     case encodingFailed
     case bridgeError(String)
+    case bridgeErrorWithCode(code: String, message: String)
 
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "Invalid bridge WebSocket URL"
         case .encodingFailed: return "Failed to encode message"
         case .bridgeError(let msg): return "Bridge error: \(msg)"
+        case .bridgeErrorWithCode(_, let msg): return "Bridge error: \(msg)"
         }
+    }
+
+    /// Structured bridge code if available. Used to route UI without relying on
+    /// fragile English/Chinese substring matching of error messages.
+    var bridgeCode: String? {
+        if case .bridgeErrorWithCode(let code, _) = self { return code }
+        return nil
     }
 }

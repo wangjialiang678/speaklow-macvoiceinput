@@ -20,7 +20,19 @@ const (
 	streamTimeout      = 120 * time.Second
 	streamStartTimeout = 10 * time.Second
 	dashscopeWSBaseURL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+
+	// dashEventErrorPrefix marks errors returned from relayDashscopeEvents when
+	// the client has already received a bridgeMsg error (DashScope emitted an
+	// `error` event). The top-level handler uses this to avoid double-sending.
+	dashEventErrorPrefix = "dashscope event error: "
 )
+
+func isDashEventErrorAlreadyWritten(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.HasPrefix(err.Error(), dashEventErrorPrefix)
+}
 
 // Client -> Bridge messages
 // type: start | audio | stop
@@ -34,11 +46,15 @@ type clientMsg struct {
 }
 
 // Bridge -> Client messages
+// Code is a stable machine-readable error classifier (see classifyBridgeErr /
+// classifyDashEvent). Clients route UI based on code, falling back to Error
+// string when code is absent (backward compatibility with older bridges).
 type bridgeMsg struct {
 	Type        string `json:"type"` // started | partial | final | finished | error
 	Text        string `json:"text,omitempty"`
 	SentenceEnd bool   `json:"sentence_end,omitempty"`
 	Error       string `json:"error,omitempty"`
+	Code        string `json:"code,omitempty"`
 }
 
 var upgrader = websocket.Upgrader{
@@ -60,20 +76,21 @@ func streamHandler(apiKey string) http.HandlerFunc {
 		var clientWriteMu sync.Mutex
 
 		if _, err := waitClientStart(clientConn); err != nil {
-			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: err.Error()})
+			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: err.Error(), Code: "client_protocol"})
 			return
 		}
 
 		dashConn, err := dialDashScopeWS(apiKey)
 		if err != nil {
-			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: fmt.Sprintf("connect dashscope: %v", err)})
+			wrapped := fmt.Errorf("connect dashscope: %w", err)
+			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: wrapped.Error(), Code: classifyBridgeErr(wrapped)})
 			return
 		}
 		defer dashConn.Close()
 
 		var dashWriteMu sync.Mutex
 		if err := setupSession(clientConn, &clientWriteMu, dashConn, &dashWriteMu); err != nil {
-			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: err.Error()})
+			_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: err.Error(), Code: classifyBridgeErr(err)})
 			return
 		}
 
@@ -92,6 +109,14 @@ func streamHandler(apiKey string) http.HandlerFunc {
 		case err := <-dashErrCh:
 			if err != nil {
 				log.Printf("[stream] dashscope loop ended: %v", err)
+				// relayDashscopeEvents already wrote an error msg for DashScope-emitted
+				// error events; transport errors (read timeout, parse, close) did not.
+				// Signal both cases to the client — duplicates are harmless.
+				if !isDashEventErrorAlreadyWritten(err) {
+					_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{
+						Type: "error", Error: err.Error(), Code: classifyBridgeErr(err),
+					})
+				}
 			}
 			return
 		case err := <-clientErrCh:
@@ -105,9 +130,16 @@ func streamHandler(apiKey string) http.HandlerFunc {
 			case err := <-dashErrCh:
 				if err != nil {
 					log.Printf("[stream] dashscope loop ended after stop: %v", err)
+					if !isDashEventErrorAlreadyWritten(err) {
+						_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{
+							Type: "error", Error: err.Error(), Code: classifyBridgeErr(err),
+						})
+					}
 				}
 			case <-time.After(15 * time.Second):
-				_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{Type: "error", Error: "timeout waiting for session.finished"})
+				_ = writeBridgeMsg(clientConn, &clientWriteMu, bridgeMsg{
+					Type: "error", Error: "timeout waiting for session.finished", Code: "upstream_timeout",
+				})
 			}
 			return
 		}
@@ -396,10 +428,13 @@ func relayDashscopeEvents(clientConn *websocket.Conn, clientWriteMu *sync.Mutex,
 
 		case "error":
 			errMsg := extractDashError(event)
-			if err := writeBridgeMsg(clientConn, clientWriteMu, bridgeMsg{Type: "error", Error: errMsg}); err != nil {
+			code := classifyDashEventError(errMsg)
+			if err := writeBridgeMsg(clientConn, clientWriteMu, bridgeMsg{Type: "error", Error: errMsg, Code: code}); err != nil {
 				return fmt.Errorf("write error message: %w", err)
 			}
-			return fmt.Errorf("dashscope error: %s", errMsg)
+			// dashEventErrorPrefix marks errors whose client message has already
+			// been sent — top-level caller must not re-send, see isDashEventErrorAlreadyWritten.
+			return fmt.Errorf("%s%s", dashEventErrorPrefix, errMsg)
 		}
 	}
 }
@@ -419,6 +454,74 @@ func getString(m map[string]any, key string) string {
 		}
 	}
 	return ""
+}
+
+// classifyBridgeErr maps a Go transport/protocol error to a stable error code.
+// Used for errors that occur locally in the bridge (dial failures, read timeouts,
+// WebSocket close frames, JSON parse errors). DashScope event-level errors go
+// through classifyDashEventError instead.
+func classifyBridgeErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "no such host"), strings.Contains(msg, "dns"):
+		return "network_dns"
+	case strings.Contains(msg, "connection refused"):
+		return "network_refused"
+	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "timeout waiting"):
+		return "upstream_timeout"
+	case strings.Contains(msg, "401"), strings.Contains(msg, "unauthorized"),
+		strings.Contains(msg, "access denied"), strings.Contains(msg, "invalid api"),
+		strings.Contains(msg, "invalid_api_key"):
+		return "auth_invalid"
+	case strings.Contains(msg, "403"):
+		return "auth_forbidden"
+	case strings.Contains(msg, "arrearage"), strings.Contains(msg, "account is in good standing"),
+		strings.Contains(msg, "overdue"):
+		return "auth_quota"
+	case strings.Contains(msg, "429"), strings.Contains(msg, "rate limit"),
+		strings.Contains(msg, "quota"), strings.Contains(msg, "too many requests"):
+		return "rate_limit"
+	case strings.Contains(msg, "500"), strings.Contains(msg, "502"),
+		strings.Contains(msg, "503"), strings.Contains(msg, "internal server error"):
+		return "upstream_server"
+	case strings.Contains(msg, "network is unreachable"),
+		strings.Contains(msg, "connection reset"), strings.Contains(msg, "broken pipe"),
+		strings.Contains(msg, "eof"):
+		return "network_broken"
+	case strings.Contains(msg, "connect dashscope"):
+		return "upstream_connect"
+	case strings.Contains(msg, "handshake"):
+		return "upstream_handshake"
+	default:
+		return "bridge_internal"
+	}
+}
+
+// classifyDashEventError classifies an error message from a DashScope-level
+// `error` event payload (not transport errors).
+func classifyDashEventError(errMsg string) string {
+	msg := strings.ToLower(errMsg)
+	switch {
+	case strings.Contains(msg, "committing input audio buffer"),
+		strings.Contains(msg, "no invalid audio stream"),
+		strings.Contains(msg, "no audio stream"):
+		// Commit happened but DashScope received no/insufficient audio.
+		// Typical cause: slow upstream handshake, user released hotkey too early.
+		return "asr_empty_audio"
+	case strings.Contains(msg, "401"), strings.Contains(msg, "unauthorized"),
+		strings.Contains(msg, "invalid api"):
+		return "auth_invalid"
+	case strings.Contains(msg, "arrearage"), strings.Contains(msg, "overdue"):
+		return "auth_quota"
+	case strings.Contains(msg, "429"), strings.Contains(msg, "rate limit"),
+		strings.Contains(msg, "quota"):
+		return "rate_limit"
+	default:
+		return "asr_upstream_error"
+	}
 }
 
 func extractDashError(event map[string]any) string {

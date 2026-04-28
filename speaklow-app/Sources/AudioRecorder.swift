@@ -233,6 +233,11 @@ class AudioRecorder: NSObject, ObservableObject {
     /// Each callback delivers exactly 3200 bytes (100ms of audio).
     var onStreamingAudioChunk: ((Data) -> Void)?
     private var readyFired = false
+
+    /// True once any non-silent audio buffer has been captured for the current
+    /// recording session. Used by streaming-finish logic to tell "user was silent"
+    /// from "mic captured audio but ASR returned nothing" (likely network issue).
+    var hasCapturedAudio: Bool { readyFired }
     private var silenceTimer: DispatchSourceTimer?
     // Streaming PCM conversion / 16kHz WAV persistence
     private var streamingConverter: AVAudioConverter?

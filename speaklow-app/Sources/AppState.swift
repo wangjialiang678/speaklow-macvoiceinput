@@ -1279,6 +1279,45 @@ final class AppState: ObservableObject, @unchecked Sendable {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
     }
 
+    /// Routes an error to user-facing (title, suggestion) preferring the structured
+    /// bridge code (see asr-bridge/stream.go classifyBridgeErr / classifyDashEventError).
+    /// Falls back to legacy substring matching when no code is present (older bridge).
+    private func userFriendlyError(_ error: Error) -> (title: String, suggestion: String) {
+        if let streamErr = error as? StreamingError, let code = streamErr.bridgeCode {
+            switch code {
+            case "network_dns":
+                return ("没有网络连接", "请检查 Wi-Fi 或网络设置")
+            case "network_refused", "network_broken":
+                return ("网络连接断了", "请检查网络连接后再试")
+            case "upstream_timeout", "upstream_handshake":
+                return ("网络太慢了", "请检查网络连接后再试")
+            case "upstream_connect":
+                return ("无法连接识别服务", "请检查网络连接后再试")
+            case "upstream_server":
+                return ("识别服务出了点问题", "通常很快恢复，请稍后再试")
+            case "auth_invalid":
+                return ("语音识别密钥（API Key）无效", "请检查 ~/.config/speaklow/.env 中的配置")
+            case "auth_forbidden":
+                return ("语音识别密钥（API Key）认证失败", "请联系应用提供者或检查配置")
+            case "auth_quota":
+                return ("语音识别密钥（API Key）余额不足", "请联系应用提供者，或自行在 ~/.config/speaklow/.env 中更换")
+            case "rate_limit":
+                return ("请求太频繁了", "请稍等一会儿再试")
+            case "asr_empty_audio":
+                return ("识别服务没收到音频", "请重试（网络慢时可能丢失前段语音）")
+            case "asr_no_speech":
+                return ("未检测到语音", "请靠近麦克风说话")
+            case "asr_upstream_error":
+                return ("识别服务出了点问题", "请重试")
+            case "client_protocol", "bridge_internal":
+                return ("语音功能出了问题", "请退出并重新打开 SpeakLow")
+            default:
+                break // fall through to legacy
+            }
+        }
+        return userFriendlyTranscriptionError(error)
+    }
+
     private func userFriendlyTranscriptionError(_ error: Error) -> (title: String, suggestion: String) {
         // Extract the full error chain for keyword matching
         let desc: String
@@ -1441,10 +1480,24 @@ extension AppState: StreamingTranscriptionDelegate {
         }
 
         if fullText.isEmpty {
-            statusText = "未检测到语音"
+            // Disambiguate "user was silent" vs "ASR got no response" using whether
+            // the microphone captured any non-silent audio during this session.
+            // Before this fix, both paths showed "未检测到语音" — misleading when a
+            // network/upstream issue silently dropped all partials (Case A).
+            let title: String
+            let suggestion: String
+            if audioRecorder.hasCapturedAudio {
+                title = "识别服务没有响应"
+                suggestion = "请重试。如反复出现，请检查网络连接"
+                viLog("Streaming: empty result despite captured audio — likely upstream/network issue")
+            } else {
+                title = "未检测到语音"
+                suggestion = "请靠近麦克风说话"
+            }
+            statusText = title
             self.playSound("Basso", volume: self.soundVolumeError)
             overlayManager.dismissPreviewPanel()
-            overlayManager.showError(title: "未检测到语音", suggestion: "请靠近麦克风说话")
+            overlayManager.showError(title: title, suggestion: suggestion)
             return
         }
 
@@ -1703,7 +1756,7 @@ extension AppState: StreamingTranscriptionDelegate {
             return
         }
 
-        viLog("Streaming FAILED: \(error.localizedDescription), falling back to batch mode")
+        viLog("Streaming FAILED: \(error.localizedDescription) [code=\((error as? StreamingError)?.bridgeCode ?? "none")]")
 
         isStreaming = false
         streamingService?.disconnect()
@@ -1711,31 +1764,45 @@ extension AppState: StreamingTranscriptionDelegate {
         audioRecorder.onStreamingAudioChunk = nil
         overlayManager.dismissPreviewPanel()
 
-        // Check if this is an unrecoverable error (no network, auth, etc.)
-        // In these cases batch fallback will also fail, so show error immediately.
-        let desc = error.localizedDescription.lowercased()
-        let isNetworkError = desc.contains("no such host") || desc.contains("dns") ||
-            desc.contains("not connected to the internet") || desc.contains("network is unreachable")
-        let isAuthError = desc.contains("401") || desc.contains("403") || desc.contains("unauthorized") ||
-            desc.contains("arrearage") || desc.contains("access denied") || desc.contains("account is in good standing") ||
-            desc.contains("invalid api") || desc.contains("invalid_api_key")
+        // Classify: unrecoverable means batch fallback would also fail (network / auth).
+        // Prefer structured bridge code; fall back to substring matching for older bridge.
+        let bridgeCode = (error as? StreamingError)?.bridgeCode ?? ""
+        let isUnrecoverable: Bool
+        switch bridgeCode {
+        case "network_dns", "network_refused", "network_broken",
+             "auth_invalid", "auth_forbidden", "auth_quota",
+             "upstream_connect":
+            isUnrecoverable = true
+        case "asr_empty_audio", "asr_upstream_error", "upstream_timeout",
+             "upstream_handshake", "upstream_server", "rate_limit",
+             "asr_no_speech", "bridge_internal", "client_protocol":
+            isUnrecoverable = false
+        default:
+            // No code or unknown — legacy substring match
+            let desc = error.localizedDescription.lowercased()
+            let isNetworkError = desc.contains("no such host") || desc.contains("dns") ||
+                desc.contains("not connected to the internet") || desc.contains("network is unreachable")
+            let isAuthError = desc.contains("401") || desc.contains("403") || desc.contains("unauthorized") ||
+                desc.contains("arrearage") || desc.contains("access denied") || desc.contains("account is in good standing") ||
+                desc.contains("invalid api") || desc.contains("invalid_api_key")
+            isUnrecoverable = isNetworkError || isAuthError
+        }
 
-        if isNetworkError || isAuthError {
-            viLog("Streaming: unrecoverable error, stopping recording and showing error")
+        // Show error whenever:
+        //   (a) error is unrecoverable (batch fallback would also fail), OR
+        //   (b) user already released the hotkey (no batch fallback path remains)
+        // Previously (b) dismissed silently, leaving user with no feedback when bridge
+        // returned an error after hotkey release (e.g. asr_empty_audio on slow handshake).
+        if isUnrecoverable || !isRecording {
+            let reason = isUnrecoverable ? "unrecoverable" : "post-release"
+            viLog("Streaming: \(reason) error, showing user feedback")
             _ = audioRecorder.stopRecording()
-            resetRecordingSessionState(reason: "streaming_unrecoverable_error")
-            let (errTitle, errSuggestion) = userFriendlyTranscriptionError(error)
+            resetRecordingSessionState(reason: "streaming_failed_\(reason)")
+            let (errTitle, errSuggestion) = userFriendlyError(error)
             statusText = errTitle
             errorMessage = error.localizedDescription
             self.playSound("Basso", volume: self.soundVolumeError)
             overlayManager.showError(title: errTitle, suggestion: errSuggestion)
-            return
-        }
-
-        // 用户已松手（isRecording=false）：录音已停止，batch fallback 不会触发，直接清理
-        if !isRecording {
-            viLog("Streaming FAILED after recording stopped — dismissing overlay")
-            overlayManager.dismiss()
             return
         }
 

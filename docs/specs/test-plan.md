@@ -148,6 +148,27 @@ log stream --predicate 'subsystem == "com.speaklow.app" AND category == "Recordi
 | API Key 未配置 | 删除 `~/.config/speaklow/.env`，启动 app | 自动打开密钥设置页面；按热键时提示配置 API Key |
 | 麦克风自愈 | 录音过程中拔掉外接麦克风 | 自动回退到内建麦克风，无需重启 app |
 
+### 2.8 网络错误可观测性（2026-04-21 Phase 1）
+
+修复目标：网络差/上游故障时不再误报"未检测到语音"，错误文案和原因对应。
+
+| 测试项 | 步骤 | 预期 |
+|--------|------|------|
+| T1 正常录音（基线回归） | 按住热键说一句话 | 正常识别、正常插入 |
+| T2 网络断开 | 系统设置关 WiFi，按住热键说话松开 | 显示 "没有网络连接"（或 "网络连接断了"），不再显示"未检测到语音" |
+| T3 Bridge 被杀 | `pkill -f asr-bridge`，立刻按热键 | 显示 "语音功能出了问题" 或自动重启后恢复 |
+| T4 慢网络 + 0 partial（Case A） | Network Link Conditioner 100% 丢包 profile，按住热键说话松开 | 显示 "识别服务没有响应"（麦克风捕到音频），不再显示"未检测到语音" |
+| T5 Post-release 错误（Case B） | 断网后按住热键说话松开 | **必须显示错误 overlay**，不得静默 dismiss |
+| T6 真·静默 | 按住热键但全程不说话、环境静音 | 显示"未检测到语音"（保留） |
+| T7 慢连仍成功（Case C 回归） | Network Link Conditioner 3G profile，按热键说话 2-3s | 最终识别成功，前段音频不丢失（buffer 生效） |
+| T8 极短录音 | 按下立刻松开（<500ms） | 优雅处理，不卡死、不误报 |
+
+自动化测试（asr-bridge/stream_test.go）：
+- `TestClassifyBridgeErr`：16 个 transport/protocol 错误 → code 映射
+- `TestClassifyDashEventError`：7 个 DashScope 事件错误 → code 映射
+- `TestIsDashEventErrorAlreadyWritten`：sentinel 识别
+
+
 ## 3. 端到端测试流程
 
 1. 构建 asr-bridge 二进制 → 验证 health 端点
